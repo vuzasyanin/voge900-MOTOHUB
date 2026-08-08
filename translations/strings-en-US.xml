@@ -10,6 +10,7 @@
     <string name="language_italian">Italiano</string>
     <string name="language_portuguese">Português</string>
     <string name="language_korean">한국어 (대한민국)</string>
+    <string name="language_russian">Русский</string>
     <string name="language_title">Language</string>
     <string name="language_description">Choose the language used by MOTO-HUB</string>
     <string name="language_detail_description">MOTO-HUB follows the phone language by default. Choose a language below to override it for this app.</string>
