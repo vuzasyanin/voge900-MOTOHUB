@@ -1,5 +1,6 @@
 package io.motohub.android.feature.pairing
 
+import io.motohub.android.session.TBoxConnectionMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -208,5 +209,41 @@ class TBoxQrParserTest {
 
         assertTrue(failure.isFailure)
         assertTrue(failure.exceptionOrNull()?.message.orEmpty().contains("Scan the dash pairing"))
+    }
+
+    @Test
+    fun parsesPhoneHotspotAction128() {
+        val payload = TBoxQrParser.parse(
+            "http://www.carbit.com.cn/down6/645/644/_ylqxos?modelid=21322&sn=t6J4&action=128" +
+                "&bm=DD%3A0D%3A30%3A24%3A87%3A6D"
+        ).getOrThrow()
+
+        assertEquals("PHONE-HOTSPOT-876a6d", payload.ssid)
+        assertEquals("", payload.password)
+        assertEquals("21322", payload.modelId)
+        assertEquals(TBoxQrOrigin.RECOGNISED, payload.origin)
+        assertEquals(TBoxConnectionMode.PHONE_HOTSPOT, payload.suggestedConnectionMode)
+    }
+
+    @Test
+    fun parsesCarbitTokenQr() {
+        val payload = TBoxQrParser.parse("CARBITDC0D3024876D").getOrThrow()
+
+        assertEquals("PHONE-HOTSPOT-24876D", payload.ssid)
+        assertEquals("", payload.password)
+        assertEquals(TBoxQrOrigin.RECOGNISED, payload.origin)
+        assertEquals(TBoxConnectionMode.PHONE_HOTSPOT, payload.suggestedConnectionMode)
+    }
+
+    @Test
+    fun suggestsWifiDirectForP2pOnlyQr() {
+        val payload = TBoxQrParser.parse(
+            "http://www.carbit.com.cn/down6/645/644/_ylqxos?modelid=34808&action=8" +
+                "&ssid=ZT5Gcf3b&pwd=secret&auth=WPA2&mac=34%3A28%3A4a%3A04%3Acf%3A3b&name=ZT5Gcf3b"
+        ).getOrThrow()
+
+        assertEquals("ZT5Gcf3b", payload.ssid)
+        assertEquals("secret", payload.password)
+        assertEquals(TBoxConnectionMode.WIFI_DIRECT, payload.suggestedConnectionMode)
     }
 }

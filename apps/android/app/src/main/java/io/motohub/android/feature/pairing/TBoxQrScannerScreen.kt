@@ -55,9 +55,9 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeUnit
-import android.util.Size
 import androidx.activity.compose.BackHandler
 import io.motohub.android.ui.components.MotoHubHeader
 
@@ -85,6 +85,7 @@ fun TBoxQrScannerScreen(
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+    val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
     val scanner = remember {
         BarcodeScanning.getClient(
             BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
@@ -104,8 +105,9 @@ fun TBoxQrScannerScreen(
         camera?.cameraControl?.setZoomRatio(value)
     }
 
-    DisposableEffect(cameraProviderFuture, scanner) {
+    DisposableEffect(cameraProviderFuture, scanner, analyzerExecutor) {
         onDispose {
+            analyzerExecutor.shutdown()
             scanner.close()
             cameraProviderFuture.addListener({
                 runCatching { cameraProviderFuture.get().unbindAll() }
@@ -132,12 +134,11 @@ fun TBoxQrScannerScreen(
                             it.surfaceProvider = surfaceProvider
                         }
                         val analysis = ImageAnalysis.Builder()
-                            .setTargetResolution(Size(1280, 720))
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build()
                             .also {
                                 it.setAnalyzer(
-                                    ContextCompat.getMainExecutor(viewContext),
+                                    analyzerExecutor,
                                     TBoxQrAnalyzer(
                                         scanner = scanner,
                                         onPayload = onPayload,
@@ -333,16 +334,15 @@ private class TBoxQrAnalyzer(
     private val onPayload: (TBoxQrPayload) -> Unit,
     private val onStatus: (String) -> Unit
 ) : ImageAnalysis.Analyzer {
-    private val processing = AtomicBoolean(false)
-    private val delivered = AtomicBoolean(false)
+    private val handled = AtomicBoolean(false)
 
     @OptIn(ExperimentalGetImage::class)
     override fun analyze(imageProxy: ImageProxy) {
-        val mediaImage = imageProxy.image ?: run {
+        if (handled.get()) {
             imageProxy.close()
             return
         }
-        if (!processing.compareAndSet(false, true)) {
+        val mediaImage = imageProxy.image ?: run {
             imageProxy.close()
             return
         }
@@ -350,8 +350,9 @@ private class TBoxQrAnalyzer(
         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
         scanner.process(image)
             .addOnSuccessListener { codes ->
-                val rawValue = codes.firstOrNull { it.rawValue != null }?.rawValue
-                if (rawValue == null) return@addOnSuccessListener
+                if (handled.get()) return@addOnSuccessListener
+                val rawValue = codes.firstOrNull { it.format == Barcode.FORMAT_QR_CODE }?.rawValue
+                    ?: return@addOnSuccessListener
                 onStatus("QR code detected. Checking T-Box details...")
                 val payload = TBoxQrParser.parse(rawValue).getOrElse { failure ->
                     // The parser names what it actually read (vehicle-info code, a bare web
@@ -366,14 +367,13 @@ private class TBoxQrAnalyzer(
                 if (payload.origin == TBoxQrOrigin.UNVERIFIED) {
                     onStatus("Network details read from an unfamiliar code. Confirm to continue.")
                 }
-                if (delivered.compareAndSet(false, true)) onPayload(payload)
+                if (handled.compareAndSet(false, true)) onPayload(payload)
             }
             .addOnFailureListener {
-                onStatus("Scan failed. Hold the phone steady and try again.")
+                if (!handled.get()) {
+                    onStatus("Scan failed. Hold the phone steady and try again.")
+                }
             }
-            .addOnCompleteListener {
-                processing.set(false)
-                imageProxy.close()
-            }
+            .addOnCompleteListener { imageProxy.close() }
     }
 }

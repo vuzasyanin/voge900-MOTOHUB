@@ -17,3 +17,6 @@ apps/android/app/src/main/res/raw/aa_identity_data
 
 # Local CodeGraph index: machine-specific, 60-100MB, rebuilt by `codegraph init`.
 /.codegraph/
+
+# IDE (Android Studio) — local only
+apps/android/.idea/

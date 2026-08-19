@@ -59,9 +59,28 @@ object TBoxQrParser {
     fun parse(rawValue: String): Result<TBoxQrPayload> = runCatching {
         val trimmed = rawValue.trim()
         parseWifiNetworkCode(trimmed)
+            ?: parseCarbitToken(trimmed)
             ?: parseMotoFunUrl(trimmed)
             ?: parseThinkerRideUrl(trimmed)
             ?: parseProvisioningUrl(trimmed)
+    }
+
+    /**
+     * Opaque `CARBIT` + 12 hex digits printed as a second QR on some Zontes units — the dash
+     * joins a hotspot the phone hosts, so there is no SoftAP SSID in the code.
+     */
+    private fun parseCarbitToken(rawValue: String): TBoxQrPayload? {
+        val match = CARBIT_TOKEN.matchEntire(rawValue.trim()) ?: return null
+        val mac = formatMac(match.groupValues[1]) ?: return null
+        return TBoxQrPayload(
+            ssid = "PHONE-HOTSPOT-${match.groupValues[1].takeLast(6)}",
+            password = "",
+            encryption = null,
+            modelId = null,
+            displayName = "Phone hotspot (${mac.takeLast(8)})",
+            origin = TBoxQrOrigin.RECOGNISED,
+            suggestedConnectionMode = TBoxConnectionMode.PHONE_HOTSPOT
+        )
     }
 
     /**
@@ -125,22 +144,70 @@ object TBoxQrParser {
                 // and an `SSID=` that reads as absent costs a pairing for a cosmetic difference.
                 decode(keyAndValue[0]).lowercase() to decode(keyAndValue.getOrElse(1) { "" })
             }
+        val action = parameters["action"]?.toIntOrNull() ?: 0
+        val mac = formatMac(parameters["mac"]) ?: formatMac(parameters["bm"])
         val ssid = parameters["ssid"].orEmpty().trim()
+        val password = parameters["pwd"].orEmpty()
+        val host = (uri?.host ?: hostOf(rawValue))?.lowercase()
+        val origin = if (host != null && isKnownProvisioningHost(host)) {
+            TBoxQrOrigin.RECOGNISED
+        } else {
+            TBoxQrOrigin.UNVERIFIED
+        }
+
+        // Bit7 / empty SoftAP creds — the dash is a Wi-Fi client and joins a hotspot the phone
+        // hosts. The QR often carries only action=128 + bm=<mac>, with no ssid/pwd at all.
+        val phoneHotspot = (action and 128) != 0 ||
+            (ssid.isEmpty() && mac != null && parameters.containsKey("bm"))
+        if (phoneHotspot) {
+            val syntheticSsid = ssid.ifEmpty {
+                "PHONE-HOTSPOT-${mac?.replace(":", "").orEmpty().takeLast(6)}"
+            }
+            val displayName = parameters["name"]?.takeIf { it.isNotBlank() }
+                ?: mac?.let { "Phone hotspot (${it.takeLast(8)})" }
+            return TBoxQrPayload(
+                ssid = syntheticSsid,
+                password = password,
+                encryption = parameters["auth"],
+                modelId = parameters["modelid"],
+                displayName = displayName,
+                origin = origin,
+                suggestedConnectionMode = TBoxConnectionMode.PHONE_HOTSPOT
+            )
+        }
+
         check(ssid.isNotEmpty()) { describeUnusableCode(rawValue) }
 
-        val host = (uri?.host ?: hostOf(rawValue))?.lowercase()
         return TBoxQrPayload(
             ssid = ssid,
-            password = parameters["pwd"].orEmpty(),
+            password = password,
             encryption = parameters["auth"],
             modelId = parameters["modelid"],
             displayName = parameters["name"],
-            origin = if (host != null && isKnownProvisioningHost(host)) {
-                TBoxQrOrigin.RECOGNISED
-            } else {
-                TBoxQrOrigin.UNVERIFIED
-            }
+            origin = origin,
+            suggestedConnectionMode = connectionModeFromAction(action)
         )
+    }
+
+    /**
+     * Maps the Carbit `action` bitmask to an explicit transport when one mode is advertised
+     * without a fallback — bit3 (8) is Wi-Fi Direct-only, bit7 (128) is phone-hosted hotspot.
+     */
+    private fun connectionModeFromAction(action: Int): TBoxConnectionMode? = when {
+        (action and 128) != 0 -> TBoxConnectionMode.PHONE_HOTSPOT
+        (action and 8) != 0 && (action and 1) == 0 && (action and 2) == 0 ->
+            TBoxConnectionMode.WIFI_DIRECT
+        else -> null
+    }
+
+    /** `aabbccddeeff` / `aa:bb:…` → colon form; null if not 12 hex digits. */
+    private fun formatMac(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val hex = raw.filter { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
+        if (hex.length != 12) {
+            return raw.takeIf { it.contains(':') && it.length >= 11 }
+        }
+        return hex.chunked(2).joinToString(":") { it.lowercase() }
     }
 
     /**
@@ -327,6 +394,7 @@ object TBoxQrParser {
     private val MOTO_FUN_WIFI = Regex("""(?:^|[?&])wifi=([^&#\s]+)""", RegexOption.IGNORE_CASE)
     private val MOTO_FUN_MACHINE_ID = Regex("""machineid=([^&#\s]+)""", RegexOption.IGNORE_CASE)
     private val MOTO_FUN_PRODUCT_ID = Regex("""productid=([^&#\s]+)""", RegexOption.IGNORE_CASE)
+    private val CARBIT_TOKEN = Regex("""(?i)^CARBIT([0-9A-F]{12})$""")
 
     /**
      * The QR decoded cleanly but carries no credentials. Naming the actual content is what lets a
@@ -356,6 +424,17 @@ object TBoxQrParser {
             // generic "scan the pairing code instead" advice sends the rider hunting for a code
             // that does not exist. Confirmed on a tester's dash 2026-08-02, whose screen reads
             // "Please open Android hotspot and set the following parameters".
+            hostOf(rawValue)?.lowercase()?.let(::isKnownProvisioningHost) == true &&
+                (rawValue.contains("action=128", ignoreCase = true) ||
+                    rawValue.contains("bm=", ignoreCase = true)) ->
+                "This dash connects the other way round: it joins a hotspot your phone creates, " +
+                    "so its code carries no network to join. On the dash, read the Ssid and " +
+                    "Password it shows, set your Android hotspot to exactly those values, turn it " +
+                    "on, and the dash will connect by itself."
+
+            CARBIT_TOKEN.containsMatchIn(rawValue.trim()) ->
+                "Carbit ID QR — enable Android hotspot with the SSID/password on the dash, then Connect."
+
             hostOf(rawValue)?.lowercase()?.let(::isKnownProvisioningHost) == true ->
                 "This dash connects the other way round: it joins a hotspot your phone creates, " +
                     "so its code carries no network to join. On the dash, read the Ssid and " +
