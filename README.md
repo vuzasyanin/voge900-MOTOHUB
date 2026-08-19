@@ -1,52 +1,39 @@
-# MOTO-HUB
+# VOGE 900DSX MOTOHUB
+
+This repository is a **clone of [MOTO-HUB](https://github.com/vincenzobpt/MOTO-HUB)**, remade specifically for **VOGE 900DSX** motorcycles.
+
+The original MOTO-HUB is a multi-brand EasyConn / Carbit dashboard project. This fork keeps that core — T-Box pairing, Android Auto on the TFT, screen mirroring, handlebar controls — and focuses day-to-day work on the VOGE 900DSX.
 
 > [!IMPORTANT]
-> [**JOIN US ON DISCORD TO RECEIVE SUPPORT, HELP THE COMMUNITY AND FOLLOW THE APP DEVELOPMENT**](https://discord.gg/uCUK55nJ5v)
-
->[**You can also add the FREE ADVANCED complementary app**](https://github.com/vincenzobpt/MOTO-HUB-PRO-releases)
-
-> [!NOTE]
-> **MOTO-HUB for iOS is ready for testing.** Places in the beta are handed out one at a time, so it is not downloadable from this page. [**Join us on Discord**](https://discord.gg/uCUK55nJ5v) and ask for iOS beta access.
+> Upstream community and support live on the original [MOTO-HUB Discord](https://discord.gg/uCUK55nJ5v). You can also add the free [MOTO-HUB ADVANCED](https://github.com/vincenzobpt/MOTO-HUB-PRO-releases) companion from the original project.
 
 > [!WARNING]
-> **MOTO-HUB is an experimental proof-of-concept, not a production-grade product.** Day-to-day development happens on a CFMOTO **700MT-ADV** dashboard with **OnePlus 13 / Galaxy Z Fold4** phones. Behavior may be unstable, require a retry, or differ on other motorcycles, T-Box firmware versions, or phones. Do not depend on it as your only source of critical navigation information. Plan your route before riding, and use the software at your own risk.
+> **This is an experimental proof-of-concept, not a production-grade product.** It is developed and tested against a **VOGE 900DSX** dashboard. Behavior may be unstable, require a retry, or differ on other motorcycles, T-Box firmware versions, or phones. Do not depend on it as your only source of critical navigation information. Plan your route before riding, and use the software at your own risk.
 
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
     <td align="center" width="100%">
       <img src="8.png" alt="Full Android Auto (Waze) projected to the motorcycle TFT" width="560"><br>
-      <sub>MOTO-HUB &mdash; full Android Auto on the motorcycle TFT</sub>
+      <sub>VOGE 900DSX MOTOHUB &mdash; full Android Auto on the motorcycle TFT</sub>
     </td>
   </tr>
 </table>
 
-MOTO-HUB is an Android 14+ application for connecting a phone to a compatible motorcycle T-Box and projecting content to the motorcycle TFT display.
+VOGE 900DSX MOTOHUB is an Android 14+ application for connecting a phone to the motorcycle T-Box and projecting content to the VOGE 900DSX TFT display.
 
-MOTO-HUB projects **Android Auto** and **phone screen mirroring** (whole screen or a single app) to the TFT, drives Android Auto from the **motorcycle's own handlebar buttons**, and provides local diagnostics. It is designed as a personal, local-first project and is not affiliated with or endorsed by any vehicle or software vendor.
+It projects **Android Auto** and **phone screen mirroring** (whole screen or a single app) to the TFT, drives Android Auto from the **motorcycle's own handlebar buttons**, and provides local diagnostics. It is a personal, local-first fork of MOTO-HUB and is not affiliated with or endorsed by VOGE, Loncin, or any other vehicle or software vendor.
 
 ## Supported Motorcycles
 
-MOTO-HUB is **not a CFMOTO-only app**. It talks to the EasyConn / Carbit dashboard stack that many manufacturers license, so it works across brands — among others:
+This fork is built **specifically for the VOGE 900DSX**. That is the motorcycle it is developed and validated against.
 
-| Brand | Notes |
-| --- | --- |
-| **CFMOTO** | The reference hardware this project is developed against (700MT-ADV) |
-| **Voge** | |
-| **Zontes** | |
-| **Moto Morini** | Dashboards paired through the **MotoFun** companion app, whose QR code uses its own dialect |
-| **Benelli** | TRK 702 / 702X |
-| **QJ Motor** | Fort 4.0 |
-| **Morbidelli / MBP** | T1002V |
+Upstream MOTO-HUB talks to the EasyConn / Carbit dashboard stack used by several brands (CFMOTO, Voge, Zontes, Moto Morini, Benelli, QJ Motor, Morbidelli / MBP, and others). Those dashboards are not rejected here either — pairing still uses the rider's QR code or manual SSID — but they are **not** the target of this fork. If you ride something other than a 900DSX, use [upstream MOTO-HUB](https://github.com/vincenzobpt/MOTO-HUB).
 
-Nothing in the app filters on brand: the network name always comes from the rider, through the QR code or manual pairing, and is used verbatim. A dashboard MOTO-HUB has never seen is not rejected — an unrecognized QR dialect can still be accepted after a warning, an unknown dashboard falls back to a generic profile instead of failing, and the diagnostics are built so a rider on an unfamiliar motorcycle can send a log that explains what happened.
+## Core And MOTO-HUB ADVANCED
 
-Each motorcycle model and T-Box firmware still needs its own validation before it can be called supported, and that includes CFMOTO ones.
+Upstream MOTO-HUB is split into two applications. **This repository is the Core clone** — the app that owns the T-Box connection and the Android Auto receiver, and the only one you need to project. It is remade for the VOGE 900DSX.
 
-## MOTO-HUB And MOTO-HUB ADVANCED
-
-MOTO-HUB is split into two applications. **This repository is MOTO-HUB (Core)** — the app that owns the T-Box connection and the Android Auto receiver, and the only one you need to project.
-
-| | MOTO-HUB (this repository) | [MOTO-HUB ADVANCED](https://github.com/vincenzobpt/MOTO-HUB-PRO-releases) |
+| | VOGE 900DSX MOTOHUB (this repository) | [MOTO-HUB ADVANCED](https://github.com/vincenzobpt/MOTO-HUB-PRO-releases) (upstream) |
 | --- | --- | --- |
 | T-Box pairing, garage, connection | ✅ | uses Core over IPC |
 | Screen mirroring (full screen or one app) | ✅ | — |
@@ -58,7 +45,7 @@ MOTO-HUB is split into two applications. **This repository is MOTO-HUB (Core)** 
 | Navigation (search, routing, route preview) | — | ✅ |
 | Trip recording, history, GPX export | — | ✅ |
 
-ADVANCED is a free companion app: it is installed alongside MOTO-HUB and reaches this repository's T-Box transport and Android Auto receiver through a documented Binder IPC boundary. **ADVANCED requires MOTO-HUB to be installed; MOTO-HUB does not require ADVANCED.** Install both to get everything.
+ADVANCED is a free companion from the original MOTO-HUB project: it is installed alongside Core and reaches this repository's T-Box transport and Android Auto receiver through a documented Binder IPC boundary. **ADVANCED requires Core to be installed; Core does not require ADVANCED.** Install both to get everything. IPC compatibility with upstream ADVANCED is not guaranteed on this fork.
 
 <table cellpadding="0" cellspacing="0" border="0">
   <tr>
@@ -79,13 +66,13 @@ ADVANCED is a free companion app: it is installed alongside MOTO-HUB and reaches
 
 ## Download The Latest APK
 
-For the latest manually published Android package, visit the [latest MOTO-HUB release](https://github.com/vincenzobpt/MOTO-HUB/releases/latest).
+For the latest manually published Android package, visit the [latest release](https://github.com/vuzasyanin/voge900-MOTOHUB/releases/latest).
 
 On the release page, expand **Assets** and download the file ending in `.apk`. Do not download **Source code (zip)** or **Source code (tar.gz)**: those files contain the project source, not an installable application. Android may ask you to allow installation from this source the first time; this is a normal Android security prompt for APKs installed outside Google Play.
 
 ## Permissions And Privacy
 
-MOTO-HUB is a local-first app. The permissions below are used to connect to the motorcycle, scan its pairing QR code, keep an active projection running, and give the rider controls. The app does not require an account and does not upload screen content.
+This app is local-first. The permissions below are used to connect to the motorcycle, scan its pairing QR code, keep an active projection running, and give the rider controls. The app does not require an account and does not upload screen content.
 
 ### Permissions requested while using the app
 
@@ -142,13 +129,13 @@ The app should continue to open normally. Only the related feature is unavailabl
 - Optionally recover or seamlessly resume a stalled or dropped TFT stream when the T-Box returns.
 - Show persistent diagnostics, run network tests, and share application logs as an exported file for troubleshooting.
 - Check GitHub releases and pre-releases from inside the app, showing release notes before installing a newer APK.
-- Run in English, Italian, Portuguese or Korean, or follow the phone language.
+- Run in English, Italian, Portuguese, Korean or Russian, or follow the phone language.
 
 ## Current Status
 
 The current Android client is version `1.1.33` (`127`) and targets Android 14/API 34 and newer.
 
-This build has been tested end-to-end for mirroring and Android Auto on a OnePlus 13 and a CFMOTO 700MT-ADV T-Box, which is simply the hardware available to the maintainer. Other brands are supported by design rather than by daily testing — see [Supported Motorcycles](#supported-motorcycles) — and compatibility with a given phone, motorcycle model, T-Box firmware version, or Android Auto version is not guaranteed and must be validated separately.
+This build is developed against a VOGE 900DSX T-Box. Compatibility with a given phone, T-Box firmware version, or Android Auto version is not guaranteed and must be validated separately. For other motorcycles, see [upstream MOTO-HUB](https://github.com/vincenzobpt/MOTO-HUB).
 
 Mirroring, Android Auto, handlebar controls and diagnostics are implemented, but every motorcycle model and T-Box firmware still requires explicit validation before it can be considered supported. The USB external display path is newer and has had less validation than the T-Box path.
 
@@ -157,7 +144,7 @@ This is still an experimental project. Do not rely on it as the only navigation 
 ## Repository Layout
 
 ```text
-MOTO-HUB/
+voge900-MOTOHUB/
 ├── apps/android/
 │   ├── app/                Android application and projection pipelines
 │   └── ipc-contract/       AIDL boundary MOTO-HUB ADVANCED connects through
@@ -192,12 +179,12 @@ The generated Android binding is expected at:
 apps/android/app/libs/hudlib.aar
 ```
 
-To rebuild it, install Go and `gomobile`, then run these commands from the directory that contains the `MOTO-HUB` folder:
+To rebuild it, install Go and `gomobile`, then run these commands from the directory that contains the `voge900-MOTOHUB` folder:
 
 ```bash
 git clone https://github.com/vincenzobpt/ridedaemon-lib ridedaemon-lib
 cd ridedaemon-lib
-gomobile bind -target=android -androidapi 34 -o ../MOTO-HUB/apps/android/app/libs/hudlib.aar ./hud/api
+gomobile bind -target=android -androidapi 34 -o ../voge900-MOTOHUB/apps/android/app/libs/hudlib.aar ./hud/api
 ```
 
 The source commit and AAR checksum must be updated in [`tooling/ridedaemon.lock`](tooling/ridedaemon.lock) whenever the artifact changes.
@@ -316,7 +303,9 @@ The [Ride Dashboard](documentation/RIDE_DASHBOARD.md), [Navigation](documentatio
 
 ## Technical Sources And Attribution
 
-MOTO-HUB was developed using the following public projects as technical sources. The links below are references and attribution; they are not claims of endorsement.
+This project is a clone of [vincenzobpt/MOTO-HUB](https://github.com/vincenzobpt/MOTO-HUB), remade for the VOGE 900DSX. Credit for the original application, architecture, and documentation belongs to that project and its contributors.
+
+The clone was developed using the following public projects as technical sources. The links below are references and attribution; they are not claims of endorsement.
 
 ### Ridedaemon library fork
 
@@ -359,11 +348,11 @@ These services are not contacted by this app. They are used by MOTO-HUB ADVANCED
 
 This section is intentionally explicit because the project combines original MOTO-HUB code with external components and research.
 
-- **MOTO-HUB (this repository) is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)** — see [`LICENSE`](LICENSE). AGPL-3.0 was chosen because the repository combines GPL-3.0 material (`hudlib.aar`, the T-Box transport) with AGPL-3.0-derived material (`aa/`, the Android Auto receiver technique ported from `headunit-revived`); AGPL-3.0 satisfies both components' obligations for a combined work and additionally covers network-facing use.
+- **This repository (a clone of MOTO-HUB) is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)** — see [`LICENSE`](LICENSE). AGPL-3.0 was chosen because the repository combines GPL-3.0 material (`hudlib.aar`, the T-Box transport) with AGPL-3.0-derived material (`aa/`, the Android Auto receiver technique ported from `headunit-revived`); AGPL-3.0 satisfies both components' obligations for a combined work and additionally covers network-facing use.
 - `ridedaemon-lib` and the reference Android project are distributed under AGPL-3.0 according to their repositories and license files; the generated `hudlib.aar` is derived from that fork. Redistributing it (including inside this repository) must comply with the applicable AGPL obligations — the corresponding source must remain available to anyone who interacts with it, including over a network.
 - The `open-cfmoto` project used for research does not contain a license file in the reviewed source snapshot. No code from that project should be published as part of MOTO-HUB until its redistribution terms and attribution requirements are verified.
 - **MOTO-HUB ADVANCED** is a separate, closed-source companion application maintained in a private repository. It contains no GPL-3.0 or AGPL-3.0 code — it reaches this repository's T-Box transport and Android Auto receiver exclusively through a documented Binder IPC boundary (`apps/android/ipc-contract/`, `IpcBridgeService`), which is why it can be distributed under different terms. ADVANCED requires MOTO-HUB to be installed to function; MOTO-HUB does not require ADVANCED.
-- CFMOTO, Voge, Zontes, Moto Morini, MotoFun, Benelli, QJ Motor, Morbidelli, MBP, EasyConn, Carbit, MotoPlay, Android Auto, Google, and related names remain the property of their respective owners. MOTO-HUB is an independent project and must not imply official support from any of them.
+- CFMOTO, Voge, Zontes, Moto Morini, MotoFun, Benelli, QJ Motor, Morbidelli, MBP, EasyConn, Carbit, MotoPlay, Android Auto, Google, and related names remain the property of their respective owners. This fork is an independent project and must not imply official support from any of them, including VOGE.
 
 This README documents the project's licensing rationale; it is not a substitute for legal advice.
 
@@ -392,8 +381,8 @@ Turning off `Settings ▸ Diagnostics ▸ Enable logging` stops the diagnostic l
 
 Review [Security and Privacy](documentation/SECURITY_AND_PRIVACY.md) before distributing an APK outside personal use.
 
-The public source does not include the Android Auto identity or APK-signing keystore. APKs attached to official MOTO-HUB releases are complete runtime builds and include Android Auto support.
+The public source does not include the Android Auto identity or APK-signing keystore. APKs attached to official releases of this fork are complete runtime builds and include Android Auto support.
 
 ## Disclaimer
 
-Use MOTO-HUB only while parked during setup and testing. The project is provided for experimentation with personally owned hardware and without any safety guarantee or vendor support.
+Use this software only while parked during setup and testing. The project is a clone of MOTO-HUB remade for personally owned VOGE 900DSX hardware, and is provided without any safety guarantee or vendor support.
