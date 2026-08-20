@@ -1275,4 +1275,44 @@
     <string name="legacy_several_manufacturers_ship_the_same_dashboard_so_49305d38">Several manufacturers ship the same dashboard software under their own branding, so this may well be your motorcycle. Continue only if you scanned it from your own dashboard.</string>
     <!-- Source: feature/pairing/UnverifiedQrDialog.kt -->
     <string name="legacy_use_these_details_52f852ac">Use these details</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_android_auto_does_not_start_2266b70e">Android Auto does not start</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_what_to_do_when_android_auto_refuses_to_project_fa692d1b">What to do when Android Auto refuses to project</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_android_auto_17_4_removed_the_way_an_app_can_ask_890c8f24">Android Auto 17.4 removed the way an app can ask it to project. MOTO-HUB still tries, and on older versions it works — but when it does not, Android Auto can be started from its own developer menu instead. You do not need to install anything.</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_one_time_setup_ca24c531">ONE-TIME SETUP</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_open_the_android_auto_app_scroll_to_the_bottom_a_69ae9e53">Open the Android Auto app, scroll to the bottom and tap "Version" ten times. Developer settings appear.</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_in_developer_settings_turn_on_add_new_cars_to_an_19f79566">In Developer settings, turn on "Add new cars to Android Auto" (older versions call it "Unknown sources").</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_every_time_android_auto_will_not_start_18ff3ab9">EVERY TIME ANDROID AUTO WILL NOT START</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_in_android_auto_s_developer_settings_open_the_me_1ea3a8cf">"In Android Auto's Developer settings, open the ⋮ menu at the top right and choose \"Start head unit server\". It is in that menu, not in the list of settings below it."</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_a_notification_confirms_the_server_is_running_le_eacf82e">A notification confirms the server is running. Leave it running: it stays up until you stop it or restart the phone.</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_go_back_to_moto_hub_and_start_android_auto_it_co_ff8cc50d">Go back to MOTO-HUB and start Android Auto. It connects on its own within a couple of seconds — there is nothing else to press.</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_open_android_auto_settings_48a5120d">Open Android Auto settings</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_jumps_straight_to_the_app_where_the_menu_above_l_7c8b2093">Jumps straight to the app where the menu above lives</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_why_14fa8">WHY</string>
+    <!-- Source: feature/androidauto/AndroidAutoHelpScreen.kt -->
+    <string name="legacy_normally_moto_hub_waits_and_asks_android_auto_to_6c183bab">Normally MOTO-HUB waits and asks Android Auto to connect to it. Version 17.4 closed that door for every app of this kind, not just this one. The head unit server reverses the direction — Android Auto waits and MOTO-HUB connects to it — which is a door Google left open for its own testing tools.</string>
+    <!-- Source: ui/components/SystemKillNotice.kt -->
+    <string name="legacy_stopped_by_your_phone_37b2b157">STOPPED BY YOUR PHONE</string>
+    <!-- Source: ui/components/SystemKillNotice.kt -->
+    <string name="legacy_your_last_session_ended_at_1_s_because_the_phone_8386f49c">Your last session ended at %1$s because the phone closed %2$s, not because of a fault in the app.</string>
+    <!-- Source: feature/home/HubHomeScreen.kt -->
+    <string name="legacy_scan_new_qr_ed7e6784">Scan new QR</string>
+    <!-- Source: feature/home/HubHomeScreen.kt -->
+    <string name="legacy_import_qr_6b03505c">Import QR</string>
+    <!-- Source: feature/home/HubHomeScreen.kt -->
+    <string name="legacy_import_qr_from_photo_b294f880">Import QR from photo</string>
+    <!-- Source: feature/home/HubHomeScreen.kt -->
+    <string name="legacy_scan_motorcycle_qr_code_cc47d360">Scan motorcycle QR code</string>
 </resources>

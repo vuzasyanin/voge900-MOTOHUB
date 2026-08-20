@@ -677,4 +677,24 @@
     <string name="legacy_this_code_carries_wi_fi_details_for_1_s_but_it_w_422a5994">Этот код содержит детали Wi-Fi для %1$s, но он не был выдан по адресу Carbit, как известно панелям мониторинга MOTO-HUB.</string>
     <string name="legacy_several_manufacturers_ship_the_same_dashboard_so_49305d38">Несколько производителей поставляют одно и то же программное обеспечение приборной панели под своей торговой маркой, так что это вполне может быть ваш мотоцикл. Продолжайте, только если вы отсканировали его со своей панели управления.</string>
     <string name="legacy_use_these_details_52f852ac">Используйте эти детали</string>
+    <string name="legacy_android_auto_does_not_start_2266b70e">Android Auto не запускается</string>
+    <string name="legacy_what_to_do_when_android_auto_refuses_to_project_fa692d1b">Что делать, если Android Auto не проецируется</string>
+    <string name="legacy_android_auto_17_4_removed_the_way_an_app_can_ask_890c8f24">В Android Auto 17.4 убрали способ, которым приложение может запросить проекцию. MOTO-HUB всё равно пытается, и на старых версиях это работает — но если нет, Android Auto можно запустить из его собственного меню разработчика. Ничего дополнительно устанавливать не нужно.</string>
+    <string name="legacy_one_time_setup_ca24c531">ОДНОРАЗОВАЯ НАСТРОЙКА</string>
+    <string name="legacy_open_the_android_auto_app_scroll_to_the_bottom_a_69ae9e53">Откройте приложение Android Auto, прокрутите вниз и десять раз нажмите «Версия». Появятся настройки разработчика.</string>
+    <string name="legacy_in_developer_settings_turn_on_add_new_cars_to_an_19f79566">В настройках разработчика включите «Add new cars to Android Auto» (в старых версиях — «Unknown sources»).</string>
+    <string name="legacy_every_time_android_auto_will_not_start_18ff3ab9">ЕСЛИ ANDROID AUTO СНОВА НЕ ЗАПУСКАЕТСЯ</string>
+    <string name="legacy_in_android_auto_s_developer_settings_open_the_me_1ea3a8cf">В настройках разработчика Android Auto откройте меню ⋮ справа вверху и выберите «Start head unit server». Этот пункт именно в том меню, а не в списке настроек ниже.</string>
+    <string name="legacy_a_notification_confirms_the_server_is_running_le_eacf82e">Уведомление подтвердит, что сервер запущен. Не останавливайте его: он работает, пока вы его не остановите или не перезагрузите телефон.</string>
+    <string name="legacy_go_back_to_moto_hub_and_start_android_auto_it_co_ff8cc50d">Вернитесь в MOTO-HUB и запустите Android Auto. Подключение произойдёт само за пару секунд — больше ничего нажимать не нужно.</string>
+    <string name="legacy_open_android_auto_settings_48a5120d">Открыть настройки Android Auto</string>
+    <string name="legacy_jumps_straight_to_the_app_where_the_menu_above_l_7c8b2093">Сразу открывает приложение, в котором находится это меню</string>
+    <string name="legacy_why_14fa8">ПОЧЕМУ</string>
+    <string name="legacy_normally_moto_hub_waits_and_asks_android_auto_to_6c183bab">Обычно MOTO-HUB ждёт и просит Android Auto подключиться к нему. Версия 17.4 закрыла этот путь для всех приложений такого типа, не только для этого. Сервер головного устройства меняет направление — Android Auto ждёт, а MOTO-HUB подключается к нему. Это дверь, которую Google оставил открытой для своих тестовых инструментов.</string>
+    <string name="legacy_stopped_by_your_phone_37b2b157">ОСТАНОВЛЕНО ВАШИМ ТЕЛЕФОНОМ</string>
+    <string name="legacy_your_last_session_ended_at_1_s_because_the_phone_8386f49c">Последний сеанс завершился в %1$s, потому что телефон закрыл %2$s, а не из-за сбоя в приложении.</string>
+    <string name="legacy_scan_new_qr_ed7e6784">Сканировать новый QR</string>
+    <string name="legacy_import_qr_6b03505c">Импорт QR</string>
+    <string name="legacy_import_qr_from_photo_b294f880">Импорт QR из фото</string>
+    <string name="legacy_scan_motorcycle_qr_code_cc47d360">Сканировать QR-код мотоцикла</string>
 </resources>

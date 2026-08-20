@@ -62,7 +62,6 @@ private enum class SettingsDetail {
 fun SettingsTabContent(
     onOpenNetworkDiagnostics: () -> Unit,
     onOpenApplicationLogs: () -> Unit,
-    onOpenAbout: () -> Unit,
     onOpenAndroidAutoHelp: () -> Unit,
     seamlessResumeEnabled: Boolean,
     onSeamlessResumeChanged: (Boolean) -> Unit
@@ -97,7 +96,6 @@ fun SettingsTabContent(
                 onOpenDetail = { detail = it },
                 onOpenNetworkDiagnostics = onOpenNetworkDiagnostics,
                 onOpenApplicationLogs = onOpenApplicationLogs,
-                onOpenAbout = onOpenAbout,
                 onOpenAndroidAutoHelp = onOpenAndroidAutoHelp
             )
             SettingsDetail.GENERAL -> GeneralDetail(
@@ -137,7 +135,6 @@ private fun SettingsMainList(
     onOpenDetail: (SettingsDetail) -> Unit,
     onOpenNetworkDiagnostics: () -> Unit,
     onOpenApplicationLogs: () -> Unit,
-    onOpenAbout: () -> Unit,
     onOpenAndroidAutoHelp: () -> Unit
 ) {
     val context = LocalContext.current
@@ -197,11 +194,6 @@ private fun SettingsMainList(
                 title = motoHubText("Android Auto does not start"),
                 description = motoHubText("What to do when Android Auto refuses to project"),
                 onClick = onOpenAndroidAutoHelp
-            )
-            MotoHubActionRow(
-                title = motoHubText("About MOTO-HUB"),
-                description = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                onClick = onOpenAbout
             )
         }
         Spacer(Modifier.height(8.dp))

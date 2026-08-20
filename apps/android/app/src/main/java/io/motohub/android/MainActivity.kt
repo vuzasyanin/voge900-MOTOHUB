@@ -1226,10 +1226,6 @@ class MainActivity : ComponentActivity() {
                                     ProjectionEventLog.record("UI", "Android Auto help screen opened.")
                                     showAndroidAutoHelp = true
                                 },
-                                onOpenAbout = {
-                                    ProjectionEventLog.record("UI", "About screen opened.")
-                                    showAbout = true
-                                },
                                 seamlessResumeEnabled = seamlessResumeEnabled,
                                 onSeamlessResumeChanged = { enabled ->
                                     if (!enabled) {

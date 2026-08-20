@@ -349,9 +349,12 @@ object MotoHubSettings {
         preferences(context).edit().putString(KEY_SKIPPED_UPDATE_TAG, tagName).apply()
     }
 
-    /** Check GitHub releases shortly after launch, at most once every 24 hours. */
+    /**
+     * Check GitHub releases shortly after launch, at most once every 24 hours.
+     * Off by default in this VOGE fork so a fresh install does not offer upstream MOTO-HUB APKs.
+     */
     fun autoUpdateChecks(context: Context): Boolean =
-        preferences(context).getBoolean(KEY_AUTO_UPDATE_CHECKS, true)
+        preferences(context).getBoolean(KEY_AUTO_UPDATE_CHECKS, false)
 
     fun setAutoUpdateChecks(context: Context, enabled: Boolean) {
         preferences(context).edit().putBoolean(KEY_AUTO_UPDATE_CHECKS, enabled).apply()

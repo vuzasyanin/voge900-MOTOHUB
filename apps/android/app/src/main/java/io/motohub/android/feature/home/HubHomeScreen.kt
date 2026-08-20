@@ -992,7 +992,7 @@ private fun PrimaryAction(text: String, onClick: () -> Unit, modifier: Modifier 
             contentColor = MaterialTheme.colorScheme.onPrimary
         )
     ) {
-        Text(text, fontWeight = FontWeight.Bold)
+        Text(motoHubText(text), fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1006,7 +1006,7 @@ private fun SecondaryAction(text: String, onClick: () -> Unit, modifier: Modifie
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
-        Text(text)
+        Text(motoHubText(text))
     }
 }
 
@@ -1021,14 +1021,14 @@ private fun StopAction(text: String, onClick: () -> Unit) {
         border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f)),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
     ) {
-        Text(text, fontWeight = FontWeight.Bold)
+        Text(motoHubText(text), fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
 private fun LinkRow(text: String, onClick: () -> Unit) {
     Text(
-        text = text,
+        text = motoHubText(text),
         modifier = Modifier
             .clickable(onClick = onClick)
             .padding(vertical = 6.dp),
