@@ -2,7 +2,7 @@
 
 Clone of [MOTO-HUB](https://github.com/vincenzobpt/MOTO-HUB), remade specifically for **VOGE 900DSX** motorcycles.
 
-Android 14+ app that connects the phone to the motorcycle T-Box and projects **Android Auto** or **screen mirroring** (whole screen or a single app) onto the 900DSX TFT. Handlebar buttons can drive Android Auto after a short calibration. Local-first: no account, no vendor affiliation with VOGE or Loncin.
+Android 14+ app that connects the phone to the motorcycle T-Box and projects **Android Auto** or **screen mirroring** (whole screen or a single app) onto the 900DSX TFT. Local-first: no account, no vendor affiliation with VOGE or Loncin.
 
 This is an experimental proof-of-concept. Do not rely on it as the only navigation or safety system. Use it at your own risk, and configure everything while parked.
 
