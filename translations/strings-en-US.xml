@@ -58,6 +58,12 @@
     <string name="android_auto_insets_auto_description">Use the full Android Auto source; the T-Box projection area adds no AA margins.</string>
     <string name="android_auto_insets_manual">Manual</string>
     <string name="android_auto_insets_manual_description">Advertise the per-motorcycle TFT Safe Margins to Android Auto.</string>
+    <string name="android_auto_night_auto">Auto (day/night)</string>
+    <string name="android_auto_night_auto_description">Follow the phone dark theme, including a sunset schedule if the phone uses one.</string>
+    <string name="android_auto_night_day">Day (light)</string>
+    <string name="android_auto_night_day_description">Keep Android Auto maps and UI in the light style.</string>
+    <string name="android_auto_night_night">Night (dark)</string>
+    <string name="android_auto_night_night_description">Keep Android Auto maps and UI in the dark style.</string>
     <string name="distance_units_kilometers">Kilometers</string>
     <string name="distance_units_kilometers_description">Distances and speeds in km and km/h.</string>
     <string name="distance_units_miles">Miles</string>

@@ -58,6 +58,12 @@
     <string name="android_auto_insets_auto_description">전체 Android Auto 소스를 사용하세요. T-Box 투영 영역에는 AA 여백이 추가되지 않습니다.</string>
     <string name="android_auto_insets_manual">수동</string>
     <string name="android_auto_insets_manual_description">Android Auto에 오토바이별 TFT 안전 여백을 광고합니다.</string>
+    <string name="android_auto_night_auto">자동(주야간)</string>
+    <string name="android_auto_night_auto_description">휴대폰 다크 테마를 따릅니다. 일몰~일출 일정이 켜져 있으면 그것도 적용됩니다.</string>
+    <string name="android_auto_night_day">낮(밝음)</string>
+    <string name="android_auto_night_day_description">Android Auto 지도와 UI를 밝은 스타일로 유지합니다.</string>
+    <string name="android_auto_night_night">밤(어두움)</string>
+    <string name="android_auto_night_night_description">Android Auto 지도와 UI를 어두운 스타일로 유지합니다.</string>
     <string name="distance_units_kilometers">킬로미터</string>
     <string name="distance_units_kilometers_description">거리와 속도(km 및 km/h)</string>
     <string name="distance_units_miles">마일리지</string>

@@ -49,6 +49,12 @@
     <string name="android_auto_insets_auto_description">Использовать полный источник Android Auto; область проекции T-Box не добавляет отступы AA.</string>
     <string name="android_auto_insets_manual">Вручную</string>
     <string name="android_auto_insets_manual_description">Передавать в Android Auto безопасные поля TFT для этого мотоцикла.</string>
+    <string name="android_auto_night_auto">Авто (день/ночь)</string>
+    <string name="android_auto_night_auto_description">Следовать тёмной теме телефона, в том числе расписанию от заката до рассвета, если оно включено.</string>
+    <string name="android_auto_night_day">День (светлая)</string>
+    <string name="android_auto_night_day_description">Оставить карты и интерфейс Android Auto светлыми.</string>
+    <string name="android_auto_night_night">Ночь (тёмная)</string>
+    <string name="android_auto_night_night_description">Оставить карты и интерфейс Android Auto тёмными.</string>
     <string name="distance_units_kilometers">Километры</string>
     <string name="distance_units_kilometers_description">Расстояния и скорости в км и км/ч.</string>
     <string name="distance_units_miles">Мили</string>

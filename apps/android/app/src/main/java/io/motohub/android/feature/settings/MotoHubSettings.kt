@@ -76,6 +76,38 @@ enum class AndroidAutoResolutionMode(
     )
 }
 
+enum class AndroidAutoNightMode(
+    val label: String,
+    val description: String,
+    val labelRes: Int,
+    val descriptionRes: Int
+) {
+    AUTO(
+        "Auto (day/night)",
+        "Follow the phone dark theme, including a sunset schedule if the phone uses one.",
+        R.string.android_auto_night_auto,
+        R.string.android_auto_night_auto_description
+    ),
+    DAY(
+        "Day (light)",
+        "Keep Android Auto maps and UI in the light style.",
+        R.string.android_auto_night_day,
+        R.string.android_auto_night_day_description
+    ),
+    NIGHT(
+        "Night (dark)",
+        "Keep Android Auto maps and UI in the dark style.",
+        R.string.android_auto_night_night,
+        R.string.android_auto_night_night_description
+    );
+
+    fun isNight(systemNight: Boolean): Boolean = when (this) {
+        AUTO -> systemNight
+        DAY -> false
+        NIGHT -> true
+    }
+}
+
 /**
  * Whether the motorcycle's explicit TFT safe margins are also advertised to Android Auto.
  * The negotiated T-Box VideoArea is already the projection canvas and never creates AA margins.
@@ -146,6 +178,7 @@ object MotoHubSettings {
     private const val KEY_SEAMLESS_RESUME = "seamless_resume"
     private const val KEY_ANDROID_AUTO_RESOLUTION = "android_auto_resolution"
     private const val KEY_ANDROID_AUTO_ASPECT_MATCHING = "android_auto_aspect_matching"
+    private const val KEY_ANDROID_AUTO_NIGHT_MODE = "android_auto_night_mode"
     private const val KEY_AUTO_CONNECT = "auto_connect"
     private const val KEY_AUTOSTART_ENABLED = "autostart_enabled"
     private const val KEY_AUTOSTART_SERVICE = "autostart_service"
@@ -257,6 +290,16 @@ object MotoHubSettings {
 
     fun setAndroidAutoAspectMatching(context: Context, mode: AndroidAutoAspectMatchingMode) {
         preferences(context).edit().putString(KEY_ANDROID_AUTO_ASPECT_MATCHING, mode.name).apply()
+    }
+
+    fun androidAutoNightMode(context: Context): AndroidAutoNightMode = enumPreference(
+        context = context,
+        key = KEY_ANDROID_AUTO_NIGHT_MODE,
+        default = AndroidAutoNightMode.AUTO
+    )
+
+    fun setAndroidAutoNightMode(context: Context, mode: AndroidAutoNightMode) {
+        preferences(context).edit().putString(KEY_ANDROID_AUTO_NIGHT_MODE, mode.name).apply()
     }
 
     fun autoConnect(context: Context): Boolean = preferences(context).getBoolean(KEY_AUTO_CONNECT, false)

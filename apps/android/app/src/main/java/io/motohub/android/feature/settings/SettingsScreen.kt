@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.motohub.android.BuildConfig
 import io.motohub.android.R
+import io.motohub.android.androidauto.AndroidAutoNightModeController
 import io.motohub.android.feature.controls.HandlebarControlStore
 import io.motohub.android.feature.controls.HandlebarMappingScreen
 import io.motohub.android.feature.controls.MediaButtonBridge
@@ -400,7 +401,23 @@ private fun AndroidAutoDetail(onBack: () -> Unit) {
     val context = LocalContext.current
     var resolution by remember { mutableStateOf(MotoHubSettings.androidAutoResolution(context)) }
     var aspectMatching by remember { mutableStateOf(MotoHubSettings.androidAutoAspectMatching(context)) }
+    var nightMode by remember { mutableStateOf(MotoHubSettings.androidAutoNightMode(context)) }
     MotoHubDetailScreen(title = motoHubText("Android Auto"), backLabel = motoHubText("‹ Settings"), onBack = onBack) {
+        MonoLabel(motoHubText("Map appearance"))
+        AndroidAutoNightMode.entries.forEach { candidate ->
+            MotoHubRadioRow(
+                title = context.getString(candidate.labelRes),
+                description = context.getString(candidate.descriptionRes),
+                selected = nightMode == candidate,
+                onClick = {
+                    nightMode = candidate
+                    MotoHubSettings.setAndroidAutoNightMode(context, candidate)
+                    AndroidAutoNightModeController.applyToRunningSession(context, force = true)
+                    ProjectionEventLog.record("SETTINGS", "Android Auto night mode changed to ${candidate.name}.")
+                }
+            )
+        }
+        HorizontalDivider()
         MonoLabel(motoHubText("RESOLUTION"))
         AndroidAutoResolutionMode.entries.forEach { candidate ->
             MotoHubRadioRow(

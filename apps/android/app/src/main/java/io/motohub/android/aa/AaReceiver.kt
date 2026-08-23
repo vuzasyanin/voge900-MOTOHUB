@@ -18,7 +18,7 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import kotlin.concurrent.thread
-import io.motohub.android.androidauto.AndroidAutoNightModeStore
+import io.motohub.android.androidauto.AndroidAutoNightModeController
 
 class AaReceiver(
     private val context: Context,
@@ -333,7 +333,7 @@ class AaReceiver(
             context = context,
             androidAutoCapabilityProfile = capabilityProfile
         )
-        t.nightMode = AndroidAutoNightModeStore(context).load()
+        t.nightMode = AndroidAutoNightModeController.isNight(context)
         t.onQuit = { clean ->
             val userExit = t.wasUserExit
             log("[AA] transport quit (clean=$clean, userExit=$userExit)")

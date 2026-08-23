@@ -1,6 +1,7 @@
 package io.motohub.android
 
 import android.app.Application
+import io.motohub.android.androidauto.AndroidAutoNightModeController
 import io.motohub.android.i18n.MotoHubStrings
 import io.motohub.android.session.CrashRecovery
 import io.motohub.android.session.ProcessExitReport
@@ -11,6 +12,7 @@ class MotoHubApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         MotoHubStrings.initialize(this)
+        AndroidAutoNightModeController.install(this)
         SentryIntegration.initialize(this)
         ProjectionEventLog.initialize(this)
         CrashRecovery.install(this)

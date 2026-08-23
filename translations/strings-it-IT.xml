@@ -56,6 +56,12 @@
     <string name="android_auto_insets_auto_description">Usa tutta la sorgente Android Auto; l’area di proiezione T-Box non aggiunge margini.</string>
     <string name="android_auto_insets_manual">Manuale</string>
     <string name="android_auto_insets_manual_description">Comunica ad Android Auto i margini TFT configurati per la moto.</string>
+    <string name="android_auto_night_auto">Automatico (giorno/notte)</string>
+    <string name="android_auto_night_auto_description">Segue il tema scuro del telefono, incluso un orario dal tramonto all’alba se il telefono lo usa.</string>
+    <string name="android_auto_night_day">Giorno (chiaro)</string>
+    <string name="android_auto_night_day_description">Mantiene mappe e interfaccia di Android Auto nello stile chiaro.</string>
+    <string name="android_auto_night_night">Notte (scuro)</string>
+    <string name="android_auto_night_night_description">Mantiene mappe e interfaccia di Android Auto nello stile scuro.</string>
     <string name="distance_units_kilometers">Chilometri</string>
     <string name="distance_units_kilometers_description">Distanze e velocità in km e km/h.</string>
     <string name="distance_units_miles">Miglia</string>
