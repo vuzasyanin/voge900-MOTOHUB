@@ -445,7 +445,7 @@ private fun ConnectionContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            SecondaryAction("Scan new QR", onScanQr, modifier = Modifier.weight(1f))
+            SecondaryAction("Scan QR", onScanQr, modifier = Modifier.weight(1f))
             SecondaryAction("Import QR", onImportQrPhoto, modifier = Modifier.weight(1f))
         }
         LinkRow("No QR? Connect manually", onManualPairing)

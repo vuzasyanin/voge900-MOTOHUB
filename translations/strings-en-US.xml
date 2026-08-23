@@ -1314,7 +1314,7 @@
     <!-- Source: ui/components/SystemKillNotice.kt -->
     <string name="legacy_your_last_session_ended_at_1_s_because_the_phone_8386f49c">Your last session ended at %1$s because the phone closed %2$s, not because of a fault in the app.</string>
     <!-- Source: feature/home/HubHomeScreen.kt -->
-    <string name="legacy_scan_new_qr_ed7e6784">Scan new QR</string>
+    <string name="legacy_scan_qr_d51e6684">Scan QR</string>
     <!-- Source: feature/home/HubHomeScreen.kt -->
     <string name="legacy_import_qr_6b03505c">Import QR</string>
     <!-- Source: feature/home/HubHomeScreen.kt -->

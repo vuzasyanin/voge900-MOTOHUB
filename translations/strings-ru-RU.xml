@@ -699,8 +699,8 @@
     <string name="legacy_normally_moto_hub_waits_and_asks_android_auto_to_6c183bab">Обычно MOTO-HUB ждёт и просит Android Auto подключиться к нему. Версия 17.4 закрыла этот путь для всех приложений такого типа, не только для этого. Сервер головного устройства меняет направление — Android Auto ждёт, а MOTO-HUB подключается к нему. Это дверь, которую Google оставил открытой для своих тестовых инструментов.</string>
     <string name="legacy_stopped_by_your_phone_37b2b157">ОСТАНОВЛЕНО ВАШИМ ТЕЛЕФОНОМ</string>
     <string name="legacy_your_last_session_ended_at_1_s_because_the_phone_8386f49c">Последний сеанс завершился в %1$s, потому что телефон закрыл %2$s, а не из-за сбоя в приложении.</string>
-    <string name="legacy_scan_new_qr_ed7e6784">Сканировать новый QR</string>
+    <string name="legacy_scan_qr_d51e6684">Сканировать QR</string>
     <string name="legacy_import_qr_6b03505c">Импорт QR</string>
     <string name="legacy_import_qr_from_photo_b294f880">Импорт QR из фото</string>
-    <string name="legacy_scan_motorcycle_qr_code_cc47d360">Сканировать QR-код мотоцикла</string>
+    <string name="legacy_scan_motorcycle_qr_code_cc47d360">Сканировать QR</string>
 </resources>
