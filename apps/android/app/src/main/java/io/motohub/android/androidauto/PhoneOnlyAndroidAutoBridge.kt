@@ -78,7 +78,8 @@ class PhoneOnlyAndroidAutoBridge(private val context: Context) :
         val activeCompositor = AaCompositor(
             log = { ProjectionEventLog.debug("PHONE_ONLY_AA", it) },
             displayMode = AndroidAutoDisplayModeStore(context).load(PHONE_ONLY_ANDROID_AUTO_PROFILE),
-            sourceGeometry = profile.video
+            sourceGeometry = profile.video,
+            outputAppliesBackPressure = false
         )
         if (!activeCompositor.start()) {
             AndroidAutoRuntime.publish(AndroidAutoRuntimeState.Failed("Compositor failed to initialize (EGL/GL)."))
@@ -114,7 +115,8 @@ class PhoneOnlyAndroidAutoBridge(private val context: Context) :
                 releaseSession()
             },
             mapTouchToSource = activeCompositor::mapCanvasToUi,
-            capabilityProfile = profile
+            capabilityProfile = profile,
+            downstreamBlockedMillis = activeCompositor::downstreamBlockedMillis
         )
         AndroidAutoReceiverOwnership.claim(this, "phone-only") { stop() }
         if (!activeReceiver.start()) {

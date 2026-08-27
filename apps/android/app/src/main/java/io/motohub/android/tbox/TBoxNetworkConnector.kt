@@ -43,7 +43,20 @@ sealed interface TBoxNetworkEvent {
 
 /** What the T-Box Wi-Fi rejoin ladder does next. */
 internal sealed interface TBoxRejoinStep {
+    /**
+     * Serve this attempt's backoff, then come back here and decide again.
+     * The wait is a suspension, and the process can leave the foreground inside it.
+     */
     data class WaitThenRetry(val delayMillis: Long) : TBoxRejoinStep
+
+    /**
+     * Android would drop a specifier request made from where this process currently sits, so the
+     * ladder waits instead of spending an attempt on a refusal that never reaches the radio.
+     */
+    data class WaitForForeground(val delayMillis: Long) : TBoxRejoinStep
+
+    /** The backoff is served and this process may ask: submit, and spend the attempt. */
+    data object SubmitNow : TBoxRejoinStep
     data object GiveUp : TBoxRejoinStep
 }
 
@@ -51,8 +64,13 @@ internal sealed interface TBoxRejoinStep {
  * Decides the ladder's next move: a quick first retry for the ordinary blip, then a growing and
  * capped wait, and eventually surrender.
  *
- * The budget is what stops a bike that was simply switched off from leaving an exclusive
- * WifiNetworkSpecifier request open for as long as the app lives.
+ * [submissionWouldBeRefused] is the difference between a rejoin that could work and one that
+ * cannot: `WifiNetworkFactory` drops a specifier request from a process past
+ * `IMPORTANCE_FOREGROUND_SERVICE` without ever looking for the AP.
+ *
+ * [backoffElapsed] is why a submission is a step of its own rather than something the caller does
+ * after sleeping on [TBoxRejoinStep.WaitThenRetry]. The caller sleeps and comes back, so the
+ * background rule is re-applied to a fresh reading immediately before the submission it governs.
  */
 internal fun nextTBoxRejoinStep(
     attempt: Int,
@@ -60,9 +78,14 @@ internal fun nextTBoxRejoinStep(
     budgetMillis: Long,
     firstDelayMillis: Long,
     baseDelayMillis: Long,
-    maxDelayMillis: Long
+    maxDelayMillis: Long,
+    submissionWouldBeRefused: Boolean = false,
+    backgroundPollMillis: Long = 0L,
+    backoffElapsed: Boolean = false
 ): TBoxRejoinStep {
     if (elapsedMillis >= budgetMillis) return TBoxRejoinStep.GiveUp
+    if (submissionWouldBeRefused) return TBoxRejoinStep.WaitForForeground(backgroundPollMillis)
+    if (backoffElapsed) return TBoxRejoinStep.SubmitNow
     val delay = if (attempt <= 1) {
         firstDelayMillis
     } else {
@@ -217,8 +240,10 @@ class TBoxNetworkConnector(context: Context) {
                 throw cancelled
             } catch (failure: Throwable) {
                 ProjectionEventLog.error("NETWORK", "T-Box AP request failed.", failure)
-                // activeVpnLabel() omitted here: merely having a VpnService-based app present isn't evidence this failure caused it.
-                val vpnMessage = TBoxVpnDiagnostics.userFacingMessage(failure, activeVpnLabel = null)
+                val vpnMessage = TBoxVpnDiagnostics.userFacingMessage(
+                    failure,
+                    TBoxVpnDiagnostics.inspect(connectivityManager, dashAddress = null)
+                )
                 Result.failure(vpnMessage?.let { IllegalStateException(it, failure) } ?: failure)
             }
         }
@@ -743,13 +768,16 @@ class TBoxNetworkConnector(context: Context) {
                         }
                     }.exceptionOrNull()
                     if (bindFailure != null) {
-                        val activeVpn = activeVpnLabel()
-                        val message = TBoxVpnDiagnostics.userFacingMessage(bindFailure, activeVpn)
+                        val routing = TBoxVpnDiagnostics.inspect(
+                            connectivityManager,
+                            firstIpv4Gateway(linkProperties)
+                        )
+                        val message = TBoxVpnDiagnostics.userFacingMessage(bindFailure, routing)
                             ?: bindFailure.message.orEmpty()
-                        Log.e(TAG, "T-Box process binding rejected; activeVpn=$activeVpn", bindFailure)
+                        Log.e(TAG, "T-Box process binding rejected; vpn=${routing?.describe() ?: "none"}", bindFailure)
                         ProjectionEventLog.error(
                             "NETWORK",
-                            "Process binding rejected for network=$network; activeVpn=${activeVpn ?: "none"}; " +
+                            "Process binding rejected for network=$network; vpn=${routing?.describe() ?: "none"}; " +
                                 "reason=$message."
                         )
                         pendingFailure = IllegalStateException(message, bindFailure)
@@ -984,8 +1012,10 @@ class TBoxNetworkConnector(context: Context) {
             currentNetwork()?.let { return Result.success(it) }
             pendingFailure?.let { failure ->
                 pendingFailure = null
-                // activeVpnLabel() omitted here: merely having a VpnService-based app present isn't evidence this failure caused it.
-                val vpnMessage = TBoxVpnDiagnostics.userFacingMessage(failure, activeVpnLabel = null)
+                val vpnMessage = TBoxVpnDiagnostics.userFacingMessage(
+                    failure,
+                    TBoxVpnDiagnostics.inspect(connectivityManager, dashAddress = null)
+                )
                 return Result.failure(vpnMessage?.let { IllegalStateException(it, failure) } ?: failure)
             }
             delay(NETWORK_POLL_MS)
@@ -1063,37 +1093,71 @@ class TBoxNetworkConnector(context: Context) {
         ladderToken.set(token)
         rejoinJob = reconnectScope.launch {
             var attempt = 0
+            var waitingForForeground = false
+            var backoffElapsed = false
             val startedAt = SystemClock.elapsedRealtime()
             try {
                 ladder@ while (activeProfile != null && connectedOnce && activeNetwork == null) {
+                    val importanceNow = processImportance()
                     val step = nextTBoxRejoinStep(
                         attempt = attempt + 1,
                         elapsedMillis = SystemClock.elapsedRealtime() - startedAt,
                         budgetMillis = REJOIN_GIVE_UP_MS,
                         firstDelayMillis = REJOIN_FIRST_DELAY_MS,
                         baseDelayMillis = REJOIN_BASE_DELAY_MS,
-                        maxDelayMillis = REJOIN_MAX_DELAY_MS
+                        maxDelayMillis = REJOIN_MAX_DELAY_MS,
+                        submissionWouldBeRefused = importanceNow > FOREGROUND_SERVICE_IMPORTANCE,
+                        backgroundPollMillis = REJOIN_BACKGROUND_POLL_MS,
+                        backoffElapsed = backoffElapsed
                     )
+                    if (step is TBoxRejoinStep.WaitForForeground) {
+                        if (!waitingForForeground) {
+                            waitingForForeground = true
+                            ProjectionEventLog.warning(
+                                "NETWORK",
+                                "Not asking Android for ${profile.ssid} yet: MOTO-HUB is in the " +
+                                    "background (importance=$importanceNow), and a request made " +
+                                    "from there is refused without the AP ever being looked " +
+                                    "for. Waiting up to ${REJOIN_GIVE_UP_MS / 1_000L}s for " +
+                                    "MOTO-HUB to come back to the foreground - open it to " +
+                                    "reconnect now."
+                            )
+                        }
+                        delay(step.delayMillis)
+                        continue@ladder
+                    }
                     if (step is TBoxRejoinStep.GiveUp) {
-                        // Every downstream recovery budget is shorter than this, so past the
-                        // deadline there is no session left for a reacquired AP to serve. Holding
-                        // an exclusive WifiNetworkSpecifier request open past that point only
-                        // takes the Wi-Fi radio away from whoever asks next - including the rider
-                        // reconnecting by hand.
                         ProjectionEventLog.warning(
                             "NETWORK",
-                            "Giving up on the T-Box Wi-Fi after $attempt rejoin attempt(s) over " +
-                                "${REJOIN_GIVE_UP_MS / 1_000L}s; releasing the network request."
+                            if (attempt == 0) {
+                                "Giving up on the T-Box Wi-Fi after " +
+                                    "${REJOIN_GIVE_UP_MS / 1_000L}s without ever being able to " +
+                                    "ask: MOTO-HUB stayed in the background the whole time, " +
+                                    "where Android refuses the request. Releasing the network " +
+                                    "request; open MOTO-HUB and tap Connect."
+                            } else {
+                                "Giving up on the T-Box Wi-Fi after $attempt rejoin attempt(s) " +
+                                    "over ${REJOIN_GIVE_UP_MS / 1_000L}s; releasing the network " +
+                                    "request."
+                            }
                         )
                         clearCurrentNetworkRequest()
                         break@ladder
                     }
+                    if (step is TBoxRejoinStep.WaitThenRetry) {
+                        delay(step.delayMillis)
+                        backoffElapsed = true
+                        continue@ladder
+                    }
+                    if (waitingForForeground) {
+                        waitingForForeground = false
+                        ProjectionEventLog.record(
+                            "NETWORK",
+                            "MOTO-HUB is back in the foreground; resuming the T-Box Wi-Fi rejoin."
+                        )
+                    }
                     attempt++
-                    delay((step as TBoxRejoinStep.WaitThenRetry).delayMillis)
-                    if (activeNetwork != null) break@ladder
-                    // A fresh submission per attempt: the ladder exists for devices whose stale
-                    // specifier registration never reconnects on its own, so unlike the connect()
-                    // retry path it deliberately does NOT join the previous pending request.
+                    backoffElapsed = false
                     submitSpecifierRequest(profile)
                     val network = awaitLadderNetwork()
                     if (network != null) {
@@ -1241,25 +1305,11 @@ class TBoxNetworkConnector(context: Context) {
 
     private fun normalizeSsid(value: String): String = value.trim().removeSurrounding("\"")
 
-    internal fun activeVpnLabel(): String? {
-        val capabilities = connectivityManager.allNetworks.asSequence()
-            .mapNotNull { connectivityManager.getNetworkCapabilities(it) }
-            .firstOrNull { it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) }
-            ?: return null
-        val ownerUid = capabilities.ownerUid
-        val packageName = if (ownerUid >= 0) {
-            contextPackageManager.getPackagesForUid(ownerUid)?.firstOrNull()
-        } else {
-            null
-        }
-        val applicationLabel = packageName?.let { name ->
-            runCatching {
-                val info = contextPackageManager.getApplicationInfo(name, 0)
-                contextPackageManager.getApplicationLabel(info).toString()
-            }.getOrNull()
-        }
-        return applicationLabel?.takeIf { it.isNotBlank() } ?: "active"
-    }
+    private fun firstIpv4Gateway(linkProperties: LinkProperties): InetAddress? =
+        linkProperties.routes
+            .mapNotNull { it.gateway }
+            .filterIsInstance<Inet4Address>()
+            .firstOrNull()
 
     private companion object {
         const val TAG = "TBoxNetwork"
@@ -1287,6 +1337,7 @@ class TBoxNetworkConnector(context: Context) {
         const val REJOIN_FIRST_DELAY_MS = 300L
         const val REJOIN_BASE_DELAY_MS = 2_500L
         const val REJOIN_MAX_DELAY_MS = 15_000L
+        const val REJOIN_BACKGROUND_POLL_MS = 2_000L
 
         /**
          * How long the ladder keeps chasing a vanished T-Box AP. Deliberately longer than every
@@ -1328,8 +1379,6 @@ class TBoxNetworkConnector(context: Context) {
          */
         const val INVALID_RSSI_DBM = -127
     }
-
-    private val contextPackageManager = context.applicationContext.packageManager
 }
 
 /**

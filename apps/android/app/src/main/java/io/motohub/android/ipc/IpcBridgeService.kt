@@ -498,7 +498,8 @@ class IpcBridgeService : Service() {
                     releaseReceiver()
                 },
                 mapTouchToSource = activeCompositor::mapCanvasToUi,
-                capabilityProfile = profile
+                capabilityProfile = profile,
+                downstreamBlockedMillis = activeCompositor::downstreamBlockedMillis
             )
             // Registering here is what lets a leaked receiver from another feature be handed over
             // instead of turning into a bare EADDRINUSE: the checks above already refuse while a

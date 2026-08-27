@@ -121,16 +121,27 @@ object TBoxSessionRegistry {
     /**
      * Unconditional teardown, for an explicit rider disconnect. Mode teardowns must use
      * [releaseAndClear] instead so they cannot end a session another mode is still using.
+     *
+     * @param keepLink when true, a still-formed Wi-Fi Direct group is left up so recovery can
+     *   adopt it instead of asking a backgrounded process to join again.
      */
     @Synchronized
-    fun clear(handle: TBoxSessionHandle? = null) {
+    fun clear(handle: TBoxSessionHandle? = null, keepLink: Boolean = false) {
         if (handle == null || activeHandle === handle) {
             val previous = activeHandle
             activeHandle = null
             consumers.clear()
             if (previous != null) {
-                previous.link.disconnect()
-                ProjectionEventLog.record("SESSION", "T-Box registry cleared.")
+                if (keepLink) {
+                    previous.link.detachForRecovery()
+                    ProjectionEventLog.record(
+                        "SESSION",
+                        "T-Box registry cleared; keeping the ${previous.link.label} link for recovery."
+                    )
+                } else {
+                    previous.link.disconnect()
+                    ProjectionEventLog.record("SESSION", "T-Box registry cleared.")
+                }
             }
         }
     }

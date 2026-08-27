@@ -393,11 +393,12 @@ object MotoHubSettings {
     }
 
     /**
-     * Check GitHub releases shortly after launch, at most once every 24 hours.
-     * Off by default in this VOGE fork so a fresh install does not offer upstream MOTO-HUB APKs.
+     * Check this fork's GitHub releases shortly after launch, at most once every 24 hours.
+     * On by default so a rider on an older APK is offered the next voge900-MOTOHUB release,
+     * not upstream MOTO-HUB.
      */
     fun autoUpdateChecks(context: Context): Boolean =
-        preferences(context).getBoolean(KEY_AUTO_UPDATE_CHECKS, false)
+        preferences(context).getBoolean(KEY_AUTO_UPDATE_CHECKS, true)
 
     fun setAutoUpdateChecks(context: Context, enabled: Boolean) {
         preferences(context).edit().putBoolean(KEY_AUTO_UPDATE_CHECKS, enabled).apply()

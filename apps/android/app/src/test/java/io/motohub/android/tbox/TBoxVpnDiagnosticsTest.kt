@@ -22,16 +22,54 @@ class TBoxVpnDiagnosticsTest {
         val error = java.net.SocketTimeoutException("connection timed out")
 
         assertFalse(TBoxVpnDiagnostics.isVpnBindBlocked(error))
-        assertNull(TBoxVpnDiagnostics.userFacingMessage(error, activeVpnLabel = null))
+        assertNull(TBoxVpnDiagnostics.userFacingMessage(error, routing = null))
     }
 
     @Test
-    fun reportsActionableMessageWhenVpnIsActive() {
+    fun namesLockdownWhenBindIsRefusedWithoutRouteCapture() {
+        val error = IllegalStateException("Binding socket to network failed: EPERM")
+        val routing = TBoxVpnDiagnostics.VpnRouting(
+            interfaceName = "tun0",
+            capturesDefaultRoute = false,
+            capturesDash = false
+        )
+
         assertEquals(
-            TBoxVpnDiagnostics.VPN_BLOCKING_MESSAGE,
+            TBoxVpnDiagnostics.lockdownMessage(routing),
+            TBoxVpnDiagnostics.userFacingMessage(error, routing)
+        )
+        assertTrue(TBoxVpnDiagnostics.isVpnRoutingMessage(TBoxVpnDiagnostics.lockdownMessage(routing)))
+    }
+
+    @Test
+    fun namesFullTunnelWhenTheDashRouteIsCaptured() {
+        val routing = TBoxVpnDiagnostics.VpnRouting(
+            interfaceName = "tun0",
+            capturesDefaultRoute = true,
+            capturesDash = false
+        )
+
+        assertEquals(
+            TBoxVpnDiagnostics.blockingMessage(routing),
             TBoxVpnDiagnostics.userFacingMessage(
                 error = IllegalStateException("network request timed out"),
-                activeVpnLabel = "WireGuard"
+                routing = routing
+            )
+        )
+    }
+
+    @Test
+    fun aBystanderVpnIsNotBlamedForAnOrdinaryTimeout() {
+        val routing = TBoxVpnDiagnostics.VpnRouting(
+            interfaceName = "tun0",
+            capturesDefaultRoute = false,
+            capturesDash = false
+        )
+
+        assertNull(
+            TBoxVpnDiagnostics.userFacingMessage(
+                error = java.net.SocketTimeoutException("connection timed out"),
+                routing = routing
             )
         )
     }

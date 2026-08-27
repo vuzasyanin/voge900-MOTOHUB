@@ -40,7 +40,14 @@ class AaCompositor(
      * is ever non-zero: AUTO aspect matching advertises no screen margins, MANUAL computes no
      * aspect margins.
      */
-    private val contentMargins: AaAspectMargins = AaAspectMargins.NONE
+    private val contentMargins: AaAspectMargins = AaAspectMargins.NONE,
+    /**
+     * Whether the output target is something that can actually jam - the bike's video encoder.
+     * False for the phone's own preview panel, which [setOutput] also drives in phone-only mode:
+     * that target's `eglSwapBuffers` blocks on the phone's vsync, so a healthy 30fps preview
+     * would look like back pressure and talk the decoder's stall watchdog out of a real restart.
+     */
+    private val outputAppliesBackPressure: Boolean = true
 ) {
     private val thread = HandlerThread("aa-compositor").apply { start() }
     private val handler = Handler(thread.looper)
@@ -50,7 +57,11 @@ class AaCompositor(
     private var eglConfig: EGLConfig? = null
     private var pbuffer: EGLSurface = EGL14.EGL_NO_SURFACE
     private var encoderWindowSurface: EGLSurface = EGL14.EGL_NO_SURFACE
+    /** The Surface [encoderWindowSurface] was created against, so a resize can keep it. */
+    private var attachedOutputSurface: Surface? = null
     private var previewWindowSurface: EGLSurface = EGL14.EGL_NO_SURFACE
+    /** The Surface [previewWindowSurface] was created against, so a resize can keep it. */
+    private var attachedPreviewSurface: Surface? = null
 
     private var program = 0
     private var aPosition = 0
@@ -90,6 +101,23 @@ class AaCompositor(
     private var lastDrawMs = 0L
     @Volatile private var frameCap = DEFAULT_FRAME_CAP
     @Volatile private var lastSourceFrameNanos = 0L
+
+    /**
+     * Cumulative milliseconds spent inside `eglSwapBuffers` on the encoder target, plus the
+     * timestamp of the swap currently in flight. Monotonic so readers take their own window
+     * via [downstreamBlockedMillis].
+     */
+    @Volatile private var swapBlockedMs = 0L
+    @Volatile private var swapInFlightSinceMs = 0L
+
+    private val statsWindowMs = 30_000L
+    private var statsWindowStartedMs = 0L
+    private var statsWindowBlockedMs = 0L
+    private var framesIn = 0
+    private var framesDrawn = 0
+    private var framesCoalesced = 0
+    private var keepAliveRedraws = 0
+    private var worstSwapMs = 0L
 
     // The decoder may keep producing frames while Android Auto shows a static screen. Coalesce
     // those frames and use a slow redraw only as a transport keep-alive.
@@ -146,29 +174,56 @@ class AaCompositor(
     fun setOutput(encoderSurface: Surface, cw: Int, ch: Int, sw: Int, sh: Int) {
         handler.post {
             try {
-                encoderWindowSurface = replaceWindowSurface(encoderWindowSurface, encoderSurface, "encoder")
+                val attaching = mustAttachWindowSurface(
+                    encoderSurface,
+                    attachedOutputSurface,
+                    encoderWindowSurface
+                )
+                if (attaching) {
+                    encoderWindowSurface =
+                        replaceWindowSurface(encoderWindowSurface, encoderSurface, "encoder")
+                    attachedOutputSurface =
+                        encoderSurface.takeIf { encoderWindowSurface != EGL14.EGL_NO_SURFACE }
+                    resetStatsWindow(android.os.SystemClock.uptimeMillis())
+                }
+                val resized = cw != canvasW || ch != canvasH || sw != srcW || sh != srcH
                 canvasW = cw
                 canvasH = ch
                 srcW = sw
                 srcH = sh
                 configureTftViewport()
-                log(
-                    "[COMPOSITOR] TFT=${cw}x$ch source=${sw}x$sh mode=$displayMode " +
-                        "viewport=${tftViewport?.width}x${tftViewport?.height} " +
-                        "@(${tftViewport?.x},${tftViewport?.y})" +
-                        if (contentMargins.any) {
-                            " content=${contentSource().width}x${contentSource().height}" +
-                                "@(${contentLeft()},${contentTop()}) " +
-                                "[AA margins ${contentMargins.width}x${contentMargins.height} cropped out]"
-                        } else {
-                            " (no AA content margins)"
-                        }
-                )
+                if (attaching || resized) {
+                    log(
+                        "[COMPOSITOR] TFT=${cw}x$ch source=${sw}x$sh mode=$displayMode " +
+                            "viewport=${tftViewport?.width}x${tftViewport?.height} " +
+                            "@(${tftViewport?.x},${tftViewport?.y})" +
+                            if (contentMargins.any) {
+                                " content=${contentSource().width}x${contentSource().height}" +
+                                    "@(${contentLeft()},${contentTop()}) " +
+                                    "[AA margins ${contentMargins.width}x${contentMargins.height} cropped out]"
+                            } else {
+                                " (no AA content margins)"
+                            }
+                    )
+                }
                 if (hasContent) drawFrame()
             } catch (failure: Throwable) {
                 log("[COMPOSITOR] setOutput failed: $failure")
             }
         }
+    }
+
+    /**
+     * Milliseconds spent blocked writing to the encoder target, including the swap in flight.
+     * Callable from any thread and never blocking.
+     */
+    fun downstreamBlockedMillis(): Long {
+        if (!outputAppliesBackPressure) return 0L
+        val inFlightSince = swapInFlightSinceMs
+        val inFlight =
+            if (inFlightSince == 0L) 0L
+            else (android.os.SystemClock.uptimeMillis() - inFlightSince).coerceAtLeast(0L)
+        return swapBlockedMs + inFlight
     }
 
     /** Caps source redraws during thermal/link adaptation; keep-alive redraws remain enabled. */
@@ -207,14 +262,25 @@ class AaCompositor(
     fun setPreview(surface: Surface, width: Int, height: Int) {
         handler.post {
             try {
-                previewWindowSurface = replaceWindowSurface(previewWindowSurface, surface, "preview")
+                val attaching = mustAttachWindowSurface(
+                    surface,
+                    attachedPreviewSurface,
+                    previewWindowSurface
+                )
+                if (attaching) {
+                    previewWindowSurface = replaceWindowSurface(previewWindowSurface, surface, "preview")
+                    attachedPreviewSurface =
+                        surface.takeIf { previewWindowSurface != EGL14.EGL_NO_SURFACE }
+                }
                 previewCanvasW = width
                 previewCanvasH = height
                 computePreviewViewport()
-                log(
-                    "[COMPOSITOR] phone preview=${width}x$height rect=" +
-                        "${previewVpW}x$previewVpH @($previewVpX,$previewVpY)"
-                )
+                if (attaching) {
+                    log(
+                        "[COMPOSITOR] phone preview=${width}x$height rect=" +
+                            "${previewVpW}x$previewVpH @($previewVpX,$previewVpY)"
+                    )
+                }
                 if (hasContent) drawFrame()
             } catch (failure: Throwable) {
                 log("[COMPOSITOR] preview attach failed: $failure")
@@ -225,6 +291,7 @@ class AaCompositor(
     fun clearPreview() {
         handler.post {
             previewWindowSurface = destroyWindowSurface(previewWindowSurface)
+            attachedPreviewSurface = null
             previewCanvasW = 0
             previewCanvasH = 0
             previewVpX = 0
@@ -241,6 +308,7 @@ class AaCompositor(
         handler.post {
             try {
                 encoderWindowSurface = destroyWindowSurface(encoderWindowSurface)
+                attachedOutputSurface = null
                 canvasW = 0
                 canvasH = 0
                 tftViewport = null
@@ -413,6 +481,7 @@ class AaCompositor(
             return
         }
         hasContent = true
+        framesIn++
         val now = System.nanoTime()
         val interval = 1_000_000_000L / frameCap.coerceAtLeast(1)
         val idleMs = android.os.SystemClock.uptimeMillis() - lastDrawMs
@@ -421,7 +490,7 @@ class AaCompositor(
             pendingFrame = false
             drawFrame()
         } else {
-            // SurfaceTexture already contains the newest frame; flush it on the next pacing tick.
+            framesCoalesced++
             pendingFrame = true
         }
     }
@@ -435,9 +504,11 @@ class AaCompositor(
                     pendingFrame = false
                     drawFrame()
                 } else if (idleMs >= idleRedrawMs) {
+                    keepAliveRedraws++
                     drawFrame()
                 }
             }
+            reportWindowIfDue()
             handler.postDelayed(this, keepAliveTickMs)
         }
     }
@@ -520,6 +591,19 @@ class AaCompositor(
 
         if (recordable) {
             EGLExt.eglPresentationTimeANDROID(eglDisplay, target, System.nanoTime())
+            val startedMs = android.os.SystemClock.uptimeMillis()
+            swapInFlightSinceMs = startedMs
+            try {
+                EGL14.eglSwapBuffers(eglDisplay, target)
+            } finally {
+                val blockedMs =
+                    (android.os.SystemClock.uptimeMillis() - startedMs).coerceAtLeast(0L)
+                swapBlockedMs += blockedMs
+                swapInFlightSinceMs = 0L
+                if (blockedMs > worstSwapMs) worstSwapMs = blockedMs
+                framesDrawn++
+            }
+            return
         }
         EGL14.eglSwapBuffers(eglDisplay, target)
     }
@@ -532,6 +616,8 @@ class AaCompositor(
             runCatching { if (::surfaceTexture.isInitialized) surfaceTexture.release() }
             encoderWindowSurface = destroyWindowSurface(encoderWindowSurface)
             previewWindowSurface = destroyWindowSurface(previewWindowSurface)
+            attachedOutputSurface = null
+            attachedPreviewSurface = null
             if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
                 EGL14.eglMakeCurrent(
                     eglDisplay,
@@ -547,6 +633,52 @@ class AaCompositor(
             eglContext = EGL14.EGL_NO_CONTEXT
         }
         thread.quitSafely()
+    }
+
+    /**
+     * Whether [requested] needs an EGL window surface created for it, or the one already attached
+     * can be kept. A resize of the SAME Surface keeps its window surface: EGL follows the
+     * underlying buffer queue's size on its own. Destroying and recreating on every call instead
+     * makes eglCreateWindowSurface fail with EGL_BAD_ALLOC.
+     */
+    private fun mustAttachWindowSurface(
+        requested: Surface,
+        attached: Surface?,
+        current: EGLSurface
+    ): Boolean = requested !== attached || current == EGL14.EGL_NO_SURFACE
+
+    private fun reportWindowIfDue() {
+        if (encoderWindowSurface == EGL14.EGL_NO_SURFACE) return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (statsWindowStartedMs == 0L) {
+            resetStatsWindow(now)
+            return
+        }
+        val elapsedMs = now - statsWindowStartedMs
+        if (elapsedMs < statsWindowMs) return
+        val blockedMs = swapBlockedMs - statsWindowBlockedMs
+        log(
+            "[COMPOSITOR] ${elapsedMs / 1_000L}s: in=$framesIn drawn=$framesDrawn " +
+                "coalesced=$framesCoalesced keepalive=$keepAliveRedraws " +
+                "blocked=${blockedMs}ms (worst ${worstSwapMs}ms)" +
+                if (outputAppliesBackPressure && blockedMs * 2 >= elapsedMs) {
+                    " - the encoder is not draining, so the video path is jammed downstream of " +
+                        "the decoder, not at it."
+                } else {
+                    ""
+                }
+        )
+        resetStatsWindow(now)
+    }
+
+    private fun resetStatsWindow(now: Long) {
+        statsWindowStartedMs = now
+        statsWindowBlockedMs = swapBlockedMs
+        framesIn = 0
+        framesDrawn = 0
+        framesCoalesced = 0
+        keepAliveRedraws = 0
+        worstSwapMs = 0L
     }
 
     /**

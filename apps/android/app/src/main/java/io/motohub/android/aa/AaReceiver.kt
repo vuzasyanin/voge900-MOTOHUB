@@ -28,6 +28,11 @@ class AaReceiver(
     private val onSessionEnded: (clean: Boolean, userExit: Boolean) -> Unit,
     private val mapTouchToSource: (Int, Int) -> Pair<Int, Int>?,
     private val capabilityProfile: AndroidAutoCapabilityProfile,
+    /**
+     * How long whatever consumes [encoderSurface] has spent blocked passing frames onward, so the
+     * decoder's stall watchdog can tell a wedged decoder from a jammed pipe behind it.
+     */
+    private val downstreamBlockedMillis: (() -> Long)? = null,
 ) {
     companion object {
         const val PORT = 5288
@@ -77,6 +82,7 @@ class AaReceiver(
     private val videoDecoder = VideoDecoder().apply {
         fallbackWidth = capabilityProfile.video.width
         fallbackHeight = capabilityProfile.video.height
+        downstreamBlockedMillis = this@AaReceiver.downstreamBlockedMillis
         onFirstFrameListener = {
             if (!videoReadyFired) {
                 videoReadyFired = true

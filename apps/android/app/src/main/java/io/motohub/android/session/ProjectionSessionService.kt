@@ -26,6 +26,7 @@ import io.motohub.android.androidauto.DisplayGeometry
 import io.motohub.android.androidauto.TBoxDisplayGeometryStore
 import io.motohub.android.feature.settings.MotoHubSettings
 import io.motohub.android.tbox.TBoxEvent
+import io.motohub.android.tbox.TBoxLink
 import io.motohub.android.tbox.TBoxLinkResolver
 import io.motohub.android.tbox.TBoxModelProfile
 import io.motohub.android.tbox.ProfileOverride
@@ -381,7 +382,7 @@ class ProjectionSessionService : Service() {
         p2pGroupWatcher?.close()
         p2pGroupWatcher = null
         previousHandle.transport.stop()
-        TBoxSessionRegistry.clear(previousHandle)
+        TBoxSessionRegistry.clear(previousHandle, keepLink = previousHandle.link is TBoxLink.WifiDirect)
 
         val link = TBoxLinkResolver.reacquire(
             applicationContext,

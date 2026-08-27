@@ -1,6 +1,7 @@
 package io.motohub.android.feature.home
 
 import android.app.Application
+import android.net.ConnectivityManager
 import io.motohub.android.i18n.motoHubText
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -338,11 +339,14 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 val networkFailure = connected.exceptionOrNull()
                 if (networkFailure != null) {
                     ProjectionEventLog.error("NETWORK", "T-Box AP connection failed.", networkFailure)
-                    // activeVpnLabel omitted: see TBoxNetworkConnector.connect() for why merely having a VPN active isn't evidence.
+                    // inspect() only blames a VPN whose routes actually capture the dash.
                     showError(
                         TBoxVpnDiagnostics.userFacingMessage(
                             error = networkFailure,
-                            activeVpnLabel = null
+                            routing = TBoxVpnDiagnostics.inspect(
+                                getApplication<Application>().getSystemService(ConnectivityManager::class.java),
+                                dashAddress = null
+                            )
                         ) ?: "Unable to connect to the T-Box network: ${networkFailure.message}",
                         // Android never joined an access point. On a dash that is itself a Wi-Fi
                         // client there is no access point to join, so this is the only failure it

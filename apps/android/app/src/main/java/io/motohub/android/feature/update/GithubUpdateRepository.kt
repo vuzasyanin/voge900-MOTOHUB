@@ -38,8 +38,8 @@ data class GithubRelease(
 
 /** Reads every published GitHub release, including prereleases. */
 class GithubUpdateRepository(
-    private val owner: String = "vincenzobpt",
-    private val repository: String = "MOTO-HUB"
+    private val owner: String = "vuzasyanin",
+    private val repository: String = "voge900-MOTOHUB"
 ) {
     fun fetchReleases(): List<GithubRelease> {
         val allReleases = buildList {

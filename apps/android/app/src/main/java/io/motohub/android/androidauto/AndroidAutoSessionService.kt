@@ -33,6 +33,7 @@ import io.motohub.android.session.ProjectionEventLog
 import io.motohub.android.session.ProjectionRuntime
 import io.motohub.android.session.ProjectionRuntimeState
 import io.motohub.android.tbox.TBoxEvent
+import io.motohub.android.tbox.TBoxLink
 import io.motohub.android.tbox.TBoxLinkResolver
 import io.motohub.android.tbox.ProfileOverride
 import io.motohub.android.tbox.TBoxCapabilityStore
@@ -350,7 +351,8 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
                     }
                 },
                 mapTouchToSource = activeCompositor::mapCanvasToUi,
-                capabilityProfile = capabilityProfile
+                capabilityProfile = capabilityProfile,
+                downstreamBlockedMillis = activeCompositor::downstreamBlockedMillis
             )
             if (!SingleKeyKeyManager.isAvailable(applicationContext)) {
                 error(
@@ -895,7 +897,7 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
         videoStreamStartRequested.set(false)
 
         previousHandle.transport.stop()
-        TBoxSessionRegistry.clear(previousHandle)
+        TBoxSessionRegistry.clear(previousHandle, keepLink = previousHandle.link is TBoxLink.WifiDirect)
         val link = TBoxLinkResolver.reacquire(
             applicationContext,
             previousHandle.networkConnector,

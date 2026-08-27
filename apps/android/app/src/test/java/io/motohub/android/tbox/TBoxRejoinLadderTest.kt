@@ -45,6 +45,56 @@ class TBoxRejoinLadderTest {
         }
     }
 
+    @Test
+    fun `a background process waits instead of spending an attempt`() {
+        assertEquals(
+            TBoxRejoinStep.WaitForForeground(2_000L),
+            nextTBoxRejoinStep(
+                attempt = 1,
+                elapsedMillis = 0L,
+                budgetMillis = BUDGET,
+                firstDelayMillis = FIRST,
+                baseDelayMillis = BASE,
+                maxDelayMillis = MAX,
+                submissionWouldBeRefused = true,
+                backgroundPollMillis = 2_000L
+            )
+        )
+    }
+
+    @Test
+    fun `after the backoff is served the next step is a submission`() {
+        assertEquals(
+            TBoxRejoinStep.SubmitNow,
+            nextTBoxRejoinStep(
+                attempt = 2,
+                elapsedMillis = 0L,
+                budgetMillis = BUDGET,
+                firstDelayMillis = FIRST,
+                baseDelayMillis = BASE,
+                maxDelayMillis = MAX,
+                backoffElapsed = true
+            )
+        )
+    }
+
+    @Test
+    fun `a background process still surrenders once the budget is spent`() {
+        assertEquals(
+            TBoxRejoinStep.GiveUp,
+            nextTBoxRejoinStep(
+                attempt = 1,
+                elapsedMillis = BUDGET,
+                budgetMillis = BUDGET,
+                firstDelayMillis = FIRST,
+                baseDelayMillis = BASE,
+                maxDelayMillis = MAX,
+                submissionWouldBeRefused = true,
+                backgroundPollMillis = 2_000L
+            )
+        )
+    }
+
     private companion object {
         const val BUDGET = 180_000L
         const val FIRST = 300L

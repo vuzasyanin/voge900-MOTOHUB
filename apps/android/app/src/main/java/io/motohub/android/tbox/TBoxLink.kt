@@ -44,6 +44,14 @@ sealed interface TBoxLink {
     /** Releases link-specific resources. The AP request itself remains owned by TBoxNetworkConnector. */
     fun disconnect()
 
+    /**
+     * Drops local watchers without tearing the radio down. Recovery reuses a still-formed
+     * Wi-Fi Direct group; [disconnect] would `removeGroup` and the next join would be refused
+     * from the background. Infrastructure and hotspot links have nothing to keep, so this is
+     * the same as [disconnect].
+     */
+    fun detachForRecovery() = disconnect()
+
     /** Starts NSD discovery over this link, hiding the network-bound vs. default-network overload. */
     fun startNsdDiscovery(
         nsdManager: NsdManager,
@@ -219,6 +227,10 @@ sealed interface TBoxLink {
         override fun disconnect() {
             groupWatchers.toList().forEach { runCatching { it.close() } }
             leaveGroup()
+        }
+
+        override fun detachForRecovery() {
+            groupWatchers.toList().forEach { runCatching { it.close() } }
         }
 
         /** The p2p source address assigned right now — the captured one if still present, else any. */

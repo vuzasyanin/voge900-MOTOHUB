@@ -38,7 +38,7 @@ import io.motohub.android.ui.components.MonoLabel
 import io.motohub.android.ui.components.MotoHubBackground
 import io.motohub.android.ui.components.MotoHubHeader
 
-const val MOTO_HUB_GITHUB_URL = "https://github.com/vincenzobpt/MOTO-HUB"
+const val MOTO_HUB_GITHUB_URL = "https://github.com/vuzasyanin/voge900-MOTOHUB"
 const val MOTO_HUB_DISCORD_URL = "https://discord.gg/Y8bnx9Zxgw"
 
 /** Taps on the version card that reveal an edition's hidden prototype page. */

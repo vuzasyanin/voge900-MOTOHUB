@@ -10,36 +10,80 @@ class TBoxWifiDirectConnectorTest {
     @Test
     fun `matches the profile group name ignoring case and quotes`() {
         assertTrue(
-            TBoxWifiDirectConnector.groupNameMatchesProfile("DIRECT-CL-C450-1234", "DIRECT-CL-C450-1234")
+            TBoxWifiDirectConnector.groupBelongsToProfile("DIRECT-CL-C450-1234", null, "DIRECT-CL-C450-1234")
         )
         assertTrue(
-            TBoxWifiDirectConnector.groupNameMatchesProfile("direct-cl-c450-1234", "\"DIRECT-CL-C450-1234\"")
+            TBoxWifiDirectConnector.groupBelongsToProfile("direct-cl-c450-1234", null, "\"DIRECT-CL-C450-1234\"")
         )
         assertTrue(
-            TBoxWifiDirectConnector.groupNameMatchesProfile(" DIRECT-AB12 ", "DIRECT-AB12")
+            TBoxWifiDirectConnector.groupBelongsToProfile(" DIRECT-AB12 ", null, "DIRECT-AB12")
         )
     }
 
     @Test
     fun `rejects a formed group that belongs to another device`() {
         assertFalse(
-            TBoxWifiDirectConnector.groupNameMatchesProfile("DIRECT-tv-LivingRoom", "DIRECT-CL-C450-1234")
+            TBoxWifiDirectConnector.groupBelongsToProfile("DIRECT-tv-LivingRoom", null, "DIRECT-CL-C450-1234")
         )
         assertFalse(
-            TBoxWifiDirectConnector.groupNameMatchesProfile("DIRECT-XY99-otherbike", "DIRECT-CL-C450-1234")
+            TBoxWifiDirectConnector.groupBelongsToProfile("DIRECT-XY99-otherbike", null, "DIRECT-CL-C450-1234")
         )
     }
 
     @Test
     fun `accepts an unverifiable group name rather than breaking working joins`() {
-        assertTrue(TBoxWifiDirectConnector.groupNameMatchesProfile(null, "DIRECT-CL-C450-1234"))
-        assertTrue(TBoxWifiDirectConnector.groupNameMatchesProfile("", "DIRECT-CL-C450-1234"))
-        assertTrue(TBoxWifiDirectConnector.groupNameMatchesProfile("  ", "DIRECT-CL-C450-1234"))
+        assertTrue(TBoxWifiDirectConnector.groupBelongsToProfile(null, null, "DIRECT-CL-C450-1234"))
+        assertTrue(TBoxWifiDirectConnector.groupBelongsToProfile("", null, "DIRECT-CL-C450-1234"))
+        assertTrue(TBoxWifiDirectConnector.groupBelongsToProfile("  ", null, "DIRECT-CL-C450-1234"))
+    }
+
+    /**
+     * Field log 94b0a3da: the rider's dash raises a group called `DIRECT-iY` and his profile is
+     * saved under the dash's P2P device name. Those two strings can never be equal, so the old
+     * name-only check removed a link he had established by hand.
+     */
+    @Test
+    fun `accepts the dash group when the profile holds its device name`() {
+        assertTrue(
+            TBoxWifiDirectConnector.groupBelongsToProfile("DIRECT-iY", "VOGE-5G-9fab", "VOGE-5G-9fab")
+        )
+        assertTrue(TBoxWifiDirectConnector.groupBelongsToProfile("DIRECT-iY", null, "VOGE-5G-9fab"))
+        assertTrue(TBoxWifiDirectConnector.groupBelongsToProfile("DIRECT-iY", " ", "VOGE-5G-9fab"))
+        assertTrue(
+            TBoxWifiDirectConnector.groupBelongsToProfile("DIRECT-xy-VOGE-5G-9fab", null, "VOGE-5G-9fab")
+        )
+    }
+
+    @Test
+    fun `rejects a group whose owner is provably another device`() {
+        assertFalse(
+            TBoxWifiDirectConnector.groupBelongsToProfile("DIRECT-iY", "LivingRoom TV", "VOGE-5G-9fab")
+        )
+        assertFalse(
+            TBoxWifiDirectConnector.groupBelongsToProfile("DIRECT-tv-LivingRoom", "LivingRoom", "VOGE-5G-9fab")
+        )
+    }
+
+    @Test
+    fun `the group owner identifies the dash for a group-name profile too`() {
+        assertTrue(
+            TBoxWifiDirectConnector.groupBelongsToProfile(
+                "DIRECT-zz-renamed",
+                "CFMOTO-EF7198",
+                "DIRECT-go-CFMOTO-EF7198"
+            )
+        )
+        assertFalse(
+            TBoxWifiDirectConnector.groupBelongsToProfile(
+                "DIRECT-tv-LivingRoom",
+                "LivingRoom",
+                "DIRECT-go-CFMOTO-EF7198"
+            )
+        )
     }
 
     @Test
     fun `recovers the dash peer name from the group ssid`() {
-        // The SSID riders actually reported from the field.
         assertEquals(
             "CFMOTO-EF7198",
             TBoxWifiDirectConnector.peerNameFromGroupSsid("DIRECT-go-CFMOTO-EF7198")
@@ -60,5 +104,49 @@ class TBoxWifiDirectConnectorTest {
         assertNull(TBoxWifiDirectConnector.peerNameFromGroupSsid("DIRECT-AB12"))
         assertNull(TBoxWifiDirectConnector.peerNameFromGroupSsid("DIRECT--"))
         assertNull(TBoxWifiDirectConnector.peerNameFromGroupSsid("DIRECT-go-"))
+    }
+
+    @Test
+    fun `looks for the peer named inside a group ssid`() {
+        assertEquals(
+            "CFMOTO-EF7198",
+            TBoxWifiDirectConnector.expectedPeerName("DIRECT-go-CFMOTO-EF7198")
+        )
+    }
+
+    @Test
+    fun `treats a non-group ssid as the peer name itself`() {
+        assertEquals("VOGE-5G-4474", TBoxWifiDirectConnector.expectedPeerName("VOGE-5G-4474"))
+        assertEquals("VOGE-5G-4474", TBoxWifiDirectConnector.expectedPeerName(" \"VOGE-5G-4474\" "))
+        assertEquals("DIRECT-ee", TBoxWifiDirectConnector.expectedPeerName("DIRECT-ee"))
+    }
+
+    @Test
+    fun `retries a refused join for as long as the budget can hold another round`() {
+        val budget = 35_000L
+        assertTrue(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(2_500L, budget))
+        assertTrue(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(11_000L, budget))
+        assertTrue(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(19_500L, budget))
+        assertTrue(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(26_000L, budget))
+    }
+
+    @Test
+    fun `stops retrying while there is still time to report why`() {
+        val budget = 35_000L
+        assertFalse(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(26_001L, budget))
+        assertFalse(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(34_000L, budget))
+        assertFalse(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(60_000L, budget))
+    }
+
+    @Test
+    fun `a budget too small for one settled round refuses the very first retry`() {
+        assertFalse(
+            TBoxWifiDirectConnector.shouldSettleAndRetryJoin(
+                elapsedMillis = 0L,
+                budgetMillis = 5_000L,
+                settleMillis = 6_000L,
+                roundCostMillis = 3_000L
+            )
+        )
     }
 }
