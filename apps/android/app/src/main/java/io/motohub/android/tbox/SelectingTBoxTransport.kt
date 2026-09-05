@@ -33,6 +33,9 @@ class SelectingTBoxTransport(context: Context) : TBoxTransport {
     override suspend fun discover(link: TBoxLink, expectedModelId: String?): Result<TBoxHost> =
         active.discover(link, expectedModelId)
 
+    override suspend fun discoverForResume(link: TBoxLink, expectedModelId: String?): Result<TBoxHost> =
+        active.discoverForResume(link, expectedModelId)
+
     override suspend fun start(host: TBoxHost): Result<Unit> = active.start(host)
 
     override fun offerAccessUnit(avcc: ByteArray): Boolean = active.offerAccessUnit(avcc)

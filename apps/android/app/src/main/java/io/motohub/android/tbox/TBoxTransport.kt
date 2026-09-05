@@ -46,6 +46,13 @@ interface TBoxTransport {
     /** Selects the profile whose wire-level capabilities will be advertised for the next session. */
     fun configureProtocolProfile(profile: TBoxModelProfile) = Unit
     suspend fun discover(link: TBoxLink, expectedModelId: String? = null): Result<TBoxHost>
+    /**
+     * Recovery path after the dash left the projection page (Back → stock cluster).
+     * One short NSD window plus the usual wake-probe fallback; the session service
+     * retries this until its dash-return budget expires.
+     */
+    suspend fun discoverForResume(link: TBoxLink, expectedModelId: String? = null): Result<TBoxHost> =
+        discover(link, expectedModelId)
     suspend fun start(host: TBoxHost): Result<Unit>
     fun offerAccessUnit(avcc: ByteArray): Boolean
     suspend fun stop()

@@ -75,6 +75,11 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
     private var watchdogJob: Job? = null
     private var recoveryJob: Job? = null
     private var networkLossJob: Job? = null
+    /**
+     * True while seamless resume is holding this foreground service for the T-Box Wi-Fi to
+     * come back. EasyConn recovery and an unexpected AAP drop must not tear that down.
+     */
+    private val wifiParked = AtomicBoolean(false)
     private var wakeLock: PowerManager.WakeLock? = null
     private val streamingLocks = TBoxStreamingLocks(this, "Android Auto")
     private var mediaButtonBridge: MediaButtonBridge? = null
@@ -339,6 +344,27 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
                         serviceScope.launch {
                             if (userExit) {
                                 stopSession("Android Auto exited by user.")
+                                return@launch
+                            }
+                            if (shouldHoldSessionForWifiRejoin(
+                                    userExit = false,
+                                    seamlessResume = MotoHubSettings.seamlessResume(
+                                        this@AndroidAutoSessionService
+                                    ),
+                                    wifiParked = wifiParked.get()
+                                )
+                            ) {
+                                ProjectionEventLog.warning(
+                                    "WATCHDOG",
+                                    "Android Auto AAP session ended while waiting for T-Box " +
+                                        "Wi-Fi; keeping the foreground service so auto-rejoin " +
+                                        "can still ask Android for the AP."
+                                )
+                                AndroidAutoRuntime.publish(AndroidAutoRuntimeState.ReceiverReady)
+                                AndroidAutoRuntime.publishStartupDetail(
+                                    "Waiting for motorcycle Wi-Fi…"
+                                )
+                                ProjectionRuntime.publish(ProjectionRuntimeState.Starting)
                                 return@launch
                             }
                             val reason = if (clean) {
@@ -691,7 +717,10 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
                     is TBoxNetworkEvent.Reacquired -> {
                         networkLossJob?.cancel()
                         networkLossJob = null
-                        if (hasReachedStreaming && MotoHubSettings.seamlessResume(this@AndroidAutoSessionService)) {
+                        if (wifiParked.compareAndSet(true, false) &&
+                            hasReachedStreaming &&
+                            MotoHubSettings.seamlessResume(this@AndroidAutoSessionService)
+                        ) {
                             requestTBoxRecovery("T-Box Wi-Fi re-acquired; resuming Android Auto stream.")
                         }
                     }
@@ -724,17 +753,37 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
             fail("T-Box Wi-Fi connection lost; seamless resume is disabled.")
             return
         }
+        wifiParked.set(true)
+        // EasyConn recovery started from the TCP abort that follows onLost submits its own
+        // specifier request and fights the rejoin ladder. Stop it; wait for the radio.
+        recoveryJob?.cancel()
+        recoveryJob = null
+        recoveryRequested.set(false)
+        AndroidAutoRuntime.publish(AndroidAutoRuntimeState.ReceiverReady)
+        AndroidAutoRuntime.publishStartupDetail("Waiting for motorcycle Wi-Fi…")
+        ProjectionRuntime.publish(ProjectionRuntimeState.Starting)
         networkLossJob?.cancel()
         networkLossJob = serviceScope.launch {
             ProjectionEventLog.warning(
                 "WATCHDOG",
                 "T-Box Wi-Fi lost; keeping Android Auto parked for " +
-                    "${NETWORK_LOSS_GRACE_MILLIS / 1_000L}s while auto-rejoin runs."
+                    "${WIFI_PARK_MILLIS / 1_000L}s while auto-rejoin runs."
             )
-            delay(NETWORK_LOSS_GRACE_MILLIS)
+            val deadline = SystemClock.elapsedRealtime() + WIFI_PARK_MILLIS
+            while (!stopping && SystemClock.elapsedRealtime() < deadline) {
+                if (handle.networkConnector.currentNetwork() != null) {
+                    if (wifiParked.compareAndSet(true, false)) {
+                        requestTBoxRecovery("T-Box Wi-Fi re-acquired; resuming Android Auto stream.")
+                    }
+                    return@launch
+                }
+                delay(WIFI_PARK_POLL_MS)
+            }
             if (!stopping && handle.networkConnector.currentNetwork() == null) {
-                requestTBoxRecovery(
-                    "T-Box Wi-Fi did not return within the grace period; resuming Android Auto recovery."
+                wifiParked.set(false)
+                fail(
+                    "T-Box Wi-Fi did not return within ${WIFI_PARK_MILLIS / 1_000L}s; " +
+                        "open MOTO-HUB and tap Connect."
                 )
             }
         }
@@ -820,11 +869,79 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
             fail(message)
             return
         }
+        val networkAvailable = tBoxHandle?.networkConnector?.currentNetwork() != null
+        if (shouldDeferEasyConnRecovery(wifiParked.get(), networkAvailable)) {
+            ProjectionEventLog.debug(
+                "WATCHDOG",
+                "Deferring EasyConn recovery until T-Box Wi-Fi returns: $message"
+            )
+            return
+        }
+        if (isCleanDashProjectionLeave(
+                hasReachedStreaming = hasReachedStreaming,
+                wifiAvailable = networkAvailable,
+                reasonLooksLikeLeave = looksLikeDashProjectionLeave(message)
+            )
+        ) {
+            parkForDashReturn(message)
+            return
+        }
         requestTBoxRecovery(message)
     }
 
     /**
-     * Retries [recoverTBoxStream] within a [RECOVERY_GIVE_UP_MILLIS] budget before giving
+     * Back on the dash closes EasyConn while the AP is often still up. Hold Android
+     * Auto, detach the dead TFT encoder, wait [DASH_LEAVE_SETTLE_MS] so an imminent
+     * AP bounce becomes Wi-Fi park, then poll EasyConn with the longer dash-return budget.
+     */
+    private fun parkForDashReturn(reason: String) {
+        if (!recoveryRequested.compareAndSet(false, true)) {
+            ProjectionEventLog.debug("WATCHDOG", "Recovery already active; ignored dash leave: $reason")
+            return
+        }
+        compositor?.clearOutput()
+        encoder?.stop()
+        encoder = null
+        AndroidAutoRuntime.publish(AndroidAutoRuntimeState.ReceiverReady)
+        AndroidAutoRuntime.publishStartupDetail("Waiting for the dash to return…")
+        ProjectionRuntime.publish(ProjectionRuntimeState.Starting)
+        ProjectionEventLog.warning(
+            "WATCHDOG",
+            "Dash left the projection page; holding Android Auto for " +
+                "${DASH_LEAVE_SETTLE_MS / 1_000L}s before EasyConn resume: $reason"
+        )
+        recoveryJob = serviceScope.launch {
+            try {
+                val settleDeadline = SystemClock.elapsedRealtime() + DASH_LEAVE_SETTLE_MS
+                while (!stopping && SystemClock.elapsedRealtime() < settleDeadline) {
+                    val networkAvailable = tBoxHandle?.networkConnector?.currentNetwork() != null
+                    if (shouldDeferEasyConnRecovery(wifiParked.get(), networkAvailable)) {
+                        ProjectionEventLog.debug(
+                            "WATCHDOG",
+                            "Dash-leave settle ended: T-Box Wi-Fi is parked."
+                        )
+                        return@launch
+                    }
+                    delay(500L)
+                }
+                if (stopping) return@launch
+                val networkAvailable = tBoxHandle?.networkConnector?.currentNetwork() != null
+                if (shouldDeferEasyConnRecovery(wifiParked.get(), networkAvailable)) return@launch
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } finally {
+                recoveryRequested.set(false)
+            }
+            requestTBoxRecovery(
+                reason,
+                giveUpMillis = recoveryGiveUpMillis(dashProjectionLeave = true),
+                dashReturn = true
+            )
+        }
+    }
+
+    /**
+     * Retries [recoverTBoxStream] within the given budget before giving
      * up and tearing the session down, instead of failing the whole Android Auto session
      * on the first transient error (a discovery timeout, a momentary Wi-Fi hiccup). This
      * mirrors the advanced streaming service's
@@ -833,20 +950,40 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
      * ARCHITECTURE.md documents. [recoveryRequested] stays true for the whole multi-attempt
      * run so the watchdog does not start a second concurrent recovery.
      */
-    private fun requestTBoxRecovery(reason: String) {
+    private fun requestTBoxRecovery(
+        reason: String,
+        giveUpMillis: Long = recoveryGiveUpMillis(dashProjectionLeave = false),
+        dashReturn: Boolean = false
+    ) {
+        val networkAvailable = tBoxHandle?.networkConnector?.currentNetwork() != null
+        if (shouldDeferEasyConnRecovery(wifiParked.get(), networkAvailable)) {
+            ProjectionEventLog.debug(
+                "WATCHDOG",
+                "Deferring EasyConn recovery until T-Box Wi-Fi returns: $reason"
+            )
+            return
+        }
         if (!recoveryRequested.compareAndSet(false, true)) {
             ProjectionEventLog.debug("WATCHDOG", "Recovery already active; ignored: $reason")
             return
         }
-        ProjectionEventLog.warning("WATCHDOG", "Android Auto recovery requested: $reason")
+        ProjectionEventLog.warning(
+            "WATCHDOG",
+            if (dashReturn) {
+                "Android Auto dash-return recovery requested (${giveUpMillis / 1_000L}s): $reason"
+            } else {
+                "Android Auto recovery requested: $reason"
+            }
+        )
         recoveryJob = serviceScope.launch {
-            val deadline = SystemClock.elapsedRealtime() + RECOVERY_GIVE_UP_MILLIS
+            val deadline = SystemClock.elapsedRealtime() + giveUpMillis
             var attempt = 0
             while (!stopping && SystemClock.elapsedRealtime() < deadline) {
                 attempt++
                 try {
-                    recoverTBoxStream(reason)
+                    recoverTBoxStream(reason, dashReturn)
                     recoveryRequested.set(false)
+                    AndroidAutoRuntime.publishStartupDetail(null)
                     ProjectionEventLog.record(
                         "WATCHDOG",
                         "Android Auto TFT stream recovered on attempt $attempt."
@@ -854,6 +991,7 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
                     return@launch
                 } catch (cancelled: CancellationException) {
                     recoveryRequested.set(false)
+                    if (!stopping) tBoxHandle?.let { observeActiveSession(it) }
                     throw cancelled
                 } catch (failure: Throwable) {
                     ProjectionEventLog.warning(
@@ -867,27 +1005,43 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
             if (!stopping) {
                 fail(
                     "Android Auto auto-recovery timed out after " +
-                        "${RECOVERY_GIVE_UP_MILLIS / 1_000L} seconds ($attempt attempt(s))."
+                        "${giveUpMillis / 1_000L} seconds ($attempt attempt(s))."
                 )
             }
         }
     }
 
-    private suspend fun recoverTBoxStream(reason: String) {
+    private suspend fun recoverTBoxStream(reason: String, dashReturn: Boolean = false) {
         val previousHandle = tBoxHandle ?: error("No T-Box session is available for recovery")
+        if (previousHandle.link is TBoxLink.Infrastructure &&
+            previousHandle.networkConnector.currentNetwork() == null
+        ) {
+            error("The T-Box Wi-Fi is not back yet")
+        }
         AndroidAutoRuntime.publish(AndroidAutoRuntimeState.ReceiverReady)
         ProjectionRuntime.publish(ProjectionRuntimeState.Starting)
+        if (dashReturn) {
+            AndroidAutoRuntime.publishStartupDetail("Waiting for the dash to return…")
+        }
         ProjectionEventLog.record(
             "WATCHDOG",
-            "Recovering EasyConn while keeping the Android Auto receiver active: $reason"
+            if (dashReturn) {
+                "Polling EasyConn for a dash-page return while keeping Android Auto active: $reason"
+            } else {
+                "Recovering EasyConn while keeping the Android Auto receiver active: $reason"
+            }
         )
 
         transportEventsJob?.cancel()
-        networkEventsJob?.cancel()
         transportEventsJob = null
-        networkEventsJob = null
-        p2pGroupWatcher?.close()
-        p2pGroupWatcher = null
+        if (!dashReturn) {
+            // Dash-return polls keep the existing network observer so an AP bounce
+            // mid-resume still becomes Wi-Fi park instead of a 30s zombie NSD.
+            networkEventsJob?.cancel()
+            networkEventsJob = null
+            p2pGroupWatcher?.close()
+            p2pGroupWatcher = null
+        }
         compositor?.clearOutput()
         encoder?.stop()
         encoder = null
@@ -912,10 +1066,17 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
                 ProfileOverride.byKey(previousHandle.motorcycle.profileOverrideKey)
             )
         )
-        val host = previousHandle.transport.discover(
-            link,
-            previousHandle.motorcycle.modelId
-        ).getOrThrow()
+        val host = if (dashReturn) {
+            previousHandle.transport.discoverForResume(
+                link,
+                previousHandle.motorcycle.modelId
+            )
+        } else {
+            previousHandle.transport.discover(
+                link,
+                previousHandle.motorcycle.modelId
+            )
+        }.getOrThrow()
         val recoveredHandle = TBoxSessionHandle(
             transport = previousHandle.transport,
             host = host,
@@ -964,6 +1125,7 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
         touchFilter = null
         if (stopping) return
         stopping = true
+        wifiParked.set(false)
         ProjectionEventLog.record(
             "ANDROID AUTO",
             "Stopping session: reason=$reason, framesSent=${framesAccepted.get()}."
@@ -1143,10 +1305,17 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
         private const val FRAME_LOG_INTERVAL = 300L
         private const val WATCHDOG_TICK_MS = 5_000L
         private const val WATCHDOG_STALL_MS = 10_000L
-        private const val NETWORK_LOSS_GRACE_MILLIS = 60_000L
+        /**
+         * How long seamless resume keeps this foreground service up after the T-Box AP vanishes.
+         * Matches [io.motohub.android.tbox.TBoxNetworkConnector]'s rejoin give-up so the
+         * specifier ladder can still submit while Android treats this process as a foreground
+         * service. The previous 60s grace was shorter than Google Android Auto's ~15s drop of
+         * the head-unit session, so the service died and Xiaomi refused the next join.
+         */
+        private const val WIFI_PARK_MILLIS = 180_000L
+        private const val WIFI_PARK_POLL_MS = 2_000L
         private const val NETWORK_REJOIN_WAIT_MILLIS = 75_000L
         private const val RECOVERY_RETRY_MILLIS = 5_000L
-        private const val RECOVERY_GIVE_UP_MILLIS = 120_000L
         private const val WAKE_LOCK_TIMEOUT_MS = 4 * 60 * 60 * 1_000L
 
         fun start(context: Context) {

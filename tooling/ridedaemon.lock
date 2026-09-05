@@ -1,19 +1,17 @@
 # Generated dependency record. Update this file whenever hudlib.aar is rebuilt.
 source_repository=https://github.com/vincenzobpt/ridedaemon-lib
 source_commit=6690e771bd04334b0ec87815385b35725fc71aff
-source_dirty=false
+source_dirty=true
 source_checkout=refs/ridedaemon-lib-motohub
 gomobile_android_api=34
 artifact=apps/android/app/libs/hudlib.aar
-sha256=e5e24ae11ee21a96f9bd2f7bf9209e64a863a860085a9a27a955b811c42e1f63
+sha256=2fd147556e25905727b692563cbbcf11b5bd8666eda7f6dd25a89f988aa9f3aa
 license=GPL-3.0-only
 
-# Rebuilt 2026-08-06: the clock replies now carry the RIDER'S wall clock. Both
-# 0x10450 QUERY_TIME and 0x10600 HU_TIME_SYNC were built from Go's time.Now(),
-# whose location on Android is UTC, so a Voge dash on 1.1.45 was told
-# "05.08.2026 18:06:56" at 20:06:56 local and a currentTime with no offset in
-# it - the clock was set, and set two hours wrong. Android now also supplies
-# the UTC offset (MobileConfig.TimeZoneOffsetSeconds) and PXCControl.hostNow()
-# presents every clock answer in it. Binding surface diffed against the
-# previous AAR: identical apart from the new setter.
-source_note=clock-ack-uses-host-timezone-offset
+# Rebuilt 2026-09-05 on top of 6690e77 (clock-ack-uses-host-timezone-offset).
+# After CLIENT_INFO, if currentHUTime still looks like boot/uptime (< 1e11 ms)
+# and the dash does not send 0x10450 within 2s, hudlib pushes the same
+# QUERY_TIME_ACK JSON the solicited path already sends. A Voge that asks
+# 0x10450 (the common handshake) is unchanged: that answer cancels the wait
+# and no second packet goes out. Binding surface vs previous AAR: identical.
+source_note=proactive-query-time-ack-if-dash-silent

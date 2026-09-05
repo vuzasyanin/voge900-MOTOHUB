@@ -1,0 +1,283 @@
+diff --git a/hud/net/pxc.go b/hud/net/pxc.go
+index 62c9f2a..1e262f9 100644
+--- a/hud/net/pxc.go
++++ b/hud/net/pxc.go
+@@ -95,7 +95,7 @@ type HUDConfig struct {
+ 	CarMicSupportFeature int    `json:"carMicSupportFeature"`
+ 	CarModel             string `json:"carModel"`
+ 	Channel              string `json:"channel"`
+-	CurrentHUTime        uint   `json:"currentHUTime"`
++	CurrentHUTime        uint64 `json:"currentHUTime"`
+ 	DisablePageInRVMap   int    `json:"disablePageInRVMap"`
+ 	DisableShowCallInfo  bool   `json:"disableShowCallInfo"`
+ 	DisableShowInRVInfo  any    `json:"disableShowInRVInfo"`
+@@ -181,6 +181,13 @@ type PXCControl struct {
+ 	timeZoneID         string
+ 	timeZoneOffsetSec  int
+ 	timeZoneOffsetSet  bool
++
++	queryTimeMu            sync.Mutex
++	queryTimeAnswered      bool
++	proactiveQueryTimeOnce sync.Once
++	// queryTimeGrace, when non-zero, overrides defaultQueryTimeGrace. Tests
++	// shrink it; production leaves it at zero.
++	queryTimeGrace time.Duration
+ }
+ 
+ type pxcConnectionState struct {
+@@ -261,6 +268,68 @@ func (s *PXCControl) hostNow() time.Time {
+ 	return now.In(time.FixedZone(s.timeZoneID, s.timeZoneOffsetSec))
+ }
+ 
++func (s *PXCControl) noteQueryTimeAnswered() {
++	s.queryTimeMu.Lock()
++	s.queryTimeAnswered = true
++	s.queryTimeMu.Unlock()
++}
++
++func (s *PXCControl) queryTimeGracePeriod() time.Duration {
++	if s.queryTimeGrace > 0 {
++		return s.queryTimeGrace
++	}
++	return defaultQueryTimeGrace
++}
++
++// maybeScheduleProactiveQueryTime pushes one 0x10451 if this dash reports an
++// unset clock and never asks 0x10450. A dash that already asks is unchanged:
++// the solicited handler marks the question answered and this wait exits.
++func (s *PXCControl) maybeScheduleProactiveQueryTime(conn net.Conn) {
++	if s.HudConfig == nil || !huTimeLooksLikeUptime(s.HudConfig.CurrentHUTime) {
++		return
++	}
++	huTime := s.HudConfig.CurrentHUTime
++	s.proactiveQueryTimeOnce.Do(func() {
++		state := s.connectionState(conn)
++		s.wg.Add(1)
++		go func() {
++			defer s.wg.Done()
++			timer := time.NewTimer(s.queryTimeGracePeriod())
++			defer timer.Stop()
++			select {
++			case <-s.quit:
++				return
++			case <-state.done:
++				return
++			case <-timer.C:
++			}
++			s.queryTimeMu.Lock()
++			already := s.queryTimeAnswered
++			if !already {
++				s.queryTimeAnswered = true
++			}
++			s.queryTimeMu.Unlock()
++			if already {
++				return
++			}
++			body := s.queryTimeAckBody()
++			logging.Printf(
++				"PXC QUERY_TIME never arrived (currentHUTime=%d); sending unsolicited ACK with %d body bytes",
++				huTime,
++				len(body),
++			)
++			response := &PXCResponse{Command: PxcQueryTimeAck, Body: body}
++			if err := s.writeResponse(response, conn, nil); err != nil {
++				if !s.isStopping() {
++					s.emitError(&PxcError{PxcWriteErr, err, false})
++				}
++				return
++			}
++			s.emitEvent(*response)
++		}()
++	})
++}
++
+ func (s *PXCControl) connectionState(conn net.Conn) *pxcConnectionState {
+ 	state := &pxcConnectionState{done: make(chan struct{})}
+ 	actual, _ := s.connections.LoadOrStore(conn, state)
+@@ -458,6 +527,7 @@ func (s *PXCControl) handleEvent(event *PXCResponse, conn net.Conn) {
+ 				break
+ 			}
+ 			s.emitEvent(*response)
++			s.maybeScheduleProactiveQueryTime(conn)
+ 		}
+ 	case PxcSpeedConf:
+ 		s.emitEvent(*event)
+@@ -530,6 +600,10 @@ func (s *PXCControl) handleEvent(event *PXCResponse, conn net.Conn) {
+ 		// The dashes that ask this ask once, right after the handshake, so a
+ 		// missed answer is a clock never set rather than one that drifts. The
+ 		// body is JSON here, not the binary stamp above.
++		// Marking the question answered first cancels the unsolicited wait
++		// started from CLIENT_INFO, so a dash that already syncs (the common
++		// Voge path) never receives a second 0x10451.
++		s.noteQueryTimeAnswered()
+ 		s.emitEvent(*event)
+ 		body := s.queryTimeAckBody()
+ 		logging.Printf("Answering PXC QUERY_TIME with %d body bytes", len(body))
+diff --git a/hud/net/pxc_test.go b/hud/net/pxc_test.go
+index 3b95724..340a776 100644
+--- a/hud/net/pxc_test.go
++++ b/hud/net/pxc_test.go
+@@ -262,3 +262,98 @@ func TestQueryTimeEmitsTheAckAsAnEventTooNotJustTheRequest(t *testing.T) {
+ 	}
+ 	assertNoPXCError(t, control)
+ }
++
++func TestProactiveQueryTimeAckWaitsWhenTheDashNeverAsks(t *testing.T) {
++	control := NewPXCControl(":0", nil, nil)
++	control.SetTimeZoneID("Europe/Moscow")
++	control.SetTimeZoneOffsetSeconds(3 * 60 * 60)
++	control.HudConfig = &HUDConfig{CurrentHUTime: 1581550}
++	control.queryTimeGrace = 30 * time.Millisecond
++
++	client, server := stdnet.Pipe()
++	defer client.Close()
++	defer server.Close()
++	if err := server.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
++		t.Fatal(err)
++	}
++
++	control.maybeScheduleProactiveQueryTime(client)
++	response := readPXCResponse(t, server)
++	if response.Command != PxcQueryTimeAck {
++		t.Fatalf("unsolicited command = 0x%x, want 0x%x", response.Command, PxcQueryTimeAck)
++	}
++	got := decodeQueryTime(t, response.Body)
++	if want := float64(3 * 60 * 60 * 1000); got["currentTime"].(float64)-got["time"].(float64) != want {
++		t.Errorf("currentTime - time = %v, want Moscow offset %v", got["currentTime"].(float64)-got["time"].(float64), want)
++	}
++	if got["currentTimeZone"] != "Europe/Moscow" {
++		t.Errorf("currentTimeZone = %v, want Europe/Moscow", got["currentTimeZone"])
++	}
++	select {
++	case evt := <-control.Events:
++		if evt.Command != PxcQueryTimeAck {
++			t.Fatalf("emitted command = 0x%x, want the unsolicited ack", evt.Command)
++		}
++	case <-time.After(time.Second):
++		t.Fatal("unsolicited ack was never emitted as an event")
++	}
++	assertNoPXCError(t, control)
++}
++
++func TestProactiveQueryTimeAckDoesNotFireWhenTheDashAsks(t *testing.T) {
++	control := NewPXCControl(":0", nil, nil)
++	control.HudConfig = &HUDConfig{CurrentHUTime: 857545}
++	control.queryTimeGrace = 80 * time.Millisecond
++
++	client, server := stdnet.Pipe()
++	defer client.Close()
++	defer server.Close()
++	if err := server.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
++		t.Fatal(err)
++	}
++
++	control.maybeScheduleProactiveQueryTime(client)
++	done := make(chan struct{})
++	go func() {
++		control.handleEvent(&PXCResponse{Command: PxcQueryTime}, client)
++		close(done)
++	}()
++	first := readPXCResponse(t, server)
++	if first.Command != PxcQueryTimeAck {
++		t.Fatalf("solicited command = 0x%x, want 0x%x", first.Command, PxcQueryTimeAck)
++	}
++	select {
++	case <-done:
++	case <-time.After(time.Second):
++		t.Fatal("solicited QUERY_TIME handler did not complete")
++	}
++
++	if err := server.SetReadDeadline(time.Now().Add(150 * time.Millisecond)); err != nil {
++		t.Fatal(err)
++	}
++	buffer := make([]byte, 1)
++	if _, err := server.Read(buffer); err == nil {
++		t.Fatal("a second QUERY_TIME_ACK was written after the dash already asked")
++	}
++	assertNoPXCError(t, control)
++}
++
++func TestProactiveQueryTimeAckSkipsADashWhoseClockIsAlreadySet(t *testing.T) {
++	control := NewPXCControl(":0", nil, nil)
++	control.HudConfig = &HUDConfig{CurrentHUTime: 1788466877642}
++	control.queryTimeGrace = 30 * time.Millisecond
++
++	client, server := stdnet.Pipe()
++	defer client.Close()
++	defer server.Close()
++	if err := server.SetReadDeadline(time.Now().Add(120 * time.Millisecond)); err != nil {
++		t.Fatal(err)
++	}
++
++	control.maybeScheduleProactiveQueryTime(client)
++	buffer := make([]byte, 1)
++	if _, err := server.Read(buffer); err == nil {
++		t.Fatal("unsolicited QUERY_TIME_ACK was sent to a dash that already has a wall clock")
++	}
++	assertNoPXCError(t, control)
++}
+diff --git a/hud/net/querytime.go b/hud/net/querytime.go
+index 2d84b05..2b32c3e 100644
+--- a/hud/net/querytime.go
++++ b/hud/net/querytime.go
+@@ -27,6 +27,19 @@ const (
+ 	queryTimeColonDateLayout = "02:01:2006 15:04:05"
+ 	queryTimeColonDateModelA = "21312"
+ 	queryTimeColonDateModelB = "21313"
++
++	// How long to wait after CLIENT_INFO before pushing time that was never
++	// asked for. A Voge that already syncs (DIRECT-VOGE / VOGE-5G-b780) sends
++	// 0x10450 within ~150ms of the handshake; a unit that reconnects through
++	// CHECK_SN and never asks (log 2026-09-02, VOGE-5G-dafc) waits out this
++	// window and then gets the same JSON ACK the asking path already sends.
++	defaultQueryTimeGrace = 2 * time.Second
++
++	// currentHUTime below this is boot/uptime milliseconds, not a 2024+ wall
++	// clock. 1e11 ms is March 1973; a live Voge reports ~1.7e12 when its clock
++	// is set and ~1e6 after an EasyConn drop resets it to uptime. uint64 so
++	// the 32-bit Android ABI gomobile still builds (uint is 32-bit there).
++	huTimeUptimeCeiling uint64 = 100_000_000_000
+ )
+ 
+ type queryTimeReply struct {
+@@ -97,3 +110,13 @@ func queryTimeDateTime(now time.Time, huModel string) string {
+ 	}
+ 	return fmt.Sprintf("%s:%03d", now.Format(layout), now.Nanosecond()/int(time.Millisecond))
+ }
++
++// huTimeLooksLikeUptime is the first half of the gate that decides whether to
++// push an unsolicited 0x10451. The second half is "the dash never sent
++// 0x10450". A dash that already asks for the time is never touched: the
++// solicited handler answers it and cancels the wait. Only a unit whose clock
++// field is still an uptime counter AND that skipped QUERY_TIME gets the extra
++// packet - the same body queryTimeAck already builds.
++func huTimeLooksLikeUptime(huTime uint64) bool {
++	return huTime < huTimeUptimeCeiling
++}
+diff --git a/hud/net/querytime_test.go b/hud/net/querytime_test.go
+index 845de7f..d9f2adf 100644
+--- a/hud/net/querytime_test.go
++++ b/hud/net/querytime_test.go
+@@ -118,6 +118,22 @@ func TestQueryTimeZoneIDPrefersTheHostSuppliedID(t *testing.T) {
+ 	}
+ }
+ 
++func TestHuTimeLooksLikeUptimeRejectsASetWallClock(t *testing.T) {
++	// Field values from two SSDQ01-0120 logs on 2026-09-02/04.
++	if !huTimeLooksLikeUptime(1581550) {
++		t.Error("Moscow reconnect currentHUTime=1581550 must look like uptime")
++	}
++	if !huTimeLooksLikeUptime(857545) {
++		t.Error("Belgrade reconnect currentHUTime=857545 must look like uptime")
++	}
++	if huTimeLooksLikeUptime(1788466877642) {
++		t.Error("set-clock currentHUTime=1788466877642 must not look like uptime")
++	}
++	if !huTimeLooksLikeUptime(0) {
++		t.Error("missing/zero currentHUTime must look like uptime")
++	}
++}
++
+ func TestQueryTimeAckIsAnsweredWithCmdPlusOne(t *testing.T) {
+ 	// The reply command is what the dash correlates on; getting it wrong is
+ 	// silent, so it is asserted rather than assumed.

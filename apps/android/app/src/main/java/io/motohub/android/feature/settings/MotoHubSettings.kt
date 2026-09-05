@@ -266,7 +266,7 @@ object MotoHubSettings {
     }
 
     fun seamlessResume(context: Context): Boolean =
-        preferences(context).getBoolean(KEY_SEAMLESS_RESUME, false)
+        preferences(context).getBoolean(KEY_SEAMLESS_RESUME, true)
 
     fun setSeamlessResume(context: Context, enabled: Boolean) {
         preferences(context).edit().putBoolean(KEY_SEAMLESS_RESUME, enabled).apply()

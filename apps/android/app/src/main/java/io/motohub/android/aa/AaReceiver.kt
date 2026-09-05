@@ -287,13 +287,15 @@ class AaReceiver(
             }
             if (!running || transport != null) {
                 try { socket.close() } catch (_: Exception) {}
-                return
+                continue
             }
             log("[AA] <<< connected to Android Auto's head unit server on :$HEAD_UNIT_SERVER_PORT")
             androidAutoConnected = true
             androidAutoConnectedSinceStart = true
             handleConnection(socket)
-            return
+            // Stay in the loop: when this AAP session ends the transport is cleared and the
+            // next pass redials, which is what seamless resume needs after the dash Wi-Fi
+            // dropped Google's head-unit server.
         }
     }
 

@@ -152,12 +152,33 @@ class RideDaemonTransport(
         protocolProfile = profile
     }
 
-    override suspend fun discover(link: TBoxLink, expectedModelId: String?): Result<TBoxHost> = withContext(Dispatchers.IO) {
-        ProjectionEventLog.record("DISCOVERY", "Starting Android NSD discovery on T-Box link (${link.label}).")
+    override suspend fun discover(link: TBoxLink, expectedModelId: String?): Result<TBoxHost> =
+        discoverInternal(link, expectedModelId, resumeAfterDashLeave = false)
+
+    override suspend fun discoverForResume(link: TBoxLink, expectedModelId: String?): Result<TBoxHost> =
+        discoverInternal(link, expectedModelId, resumeAfterDashLeave = true)
+
+    private suspend fun discoverInternal(
+        link: TBoxLink,
+        expectedModelId: String?,
+        resumeAfterDashLeave: Boolean
+    ): Result<TBoxHost> = withContext(Dispatchers.IO) {
+        ProjectionEventLog.record(
+            "DISCOVERY",
+            if (resumeAfterDashLeave) {
+                "Starting short EasyConn resume discovery on T-Box link (${link.label})."
+            } else {
+                "Starting Android NSD discovery on T-Box link (${link.label})."
+            }
+        )
         runCatching {
             stopSession()
             resetProtocolStats()
-            val host = discoverWithRetry(link, expectedModelId)
+            val host = if (resumeAfterDashLeave) {
+                discoverForResumeWithRetry(link, expectedModelId)
+            } else {
+                discoverWithRetry(link, expectedModelId)
+            }
             val profile = protocolProfile.takeIf { it != TBoxModelProfile.GENERIC }
                 ?: TBoxModelProfile.resolve(expectedModelId, null)
             val mobileConfig = Api.newMobileConfig(
@@ -182,7 +203,10 @@ class RideDaemonTransport(
                 // 1.1.45). The offset is what actually moves the clock, and Android is
                 // the only side that knows it with DST applied. Both are read per
                 // session, so a rider who crosses a border gets the new zone on the
-                // next connect.
+                // next connect. hudlib also waits ~2s after CLIENT_INFO and, only
+                // if the dash never sent 0x10450 and currentHUTime still looks
+                // like uptime, pushes the same ACK unsolicited. A Voge that
+                // already asks (the common path) is not sent a second packet.
                 setTimeZoneID(java.util.TimeZone.getDefault().id)
                 setTimeZoneOffsetSeconds(
                     java.util.TimeZone.getDefault()
@@ -217,7 +241,14 @@ class RideDaemonTransport(
             stopSession()
             // User/scope cancellation is not a discovery failure; clean up and propagate it.
             if (failure is CancellationException) throw failure
-            ProjectionEventLog.error("DISCOVERY", "RideDaemon discovery/configuration failed.", failure)
+            if (resumeAfterDashLeave) {
+                ProjectionEventLog.warning(
+                    "DISCOVERY",
+                    "EasyConn resume window empty: ${failure.message}"
+                )
+            } else {
+                ProjectionEventLog.error("DISCOVERY", "RideDaemon discovery/configuration failed.", failure)
+            }
         }
     }
 
@@ -533,6 +564,40 @@ class RideDaemonTransport(
             )
         }
 
+        return finishInfrastructureDiscoveryOrThrow(
+            link,
+            expectedModelId,
+            "The EasyConn service was not advertised in $DISCOVERY_MAX_ATTEMPTS discovery windows of " +
+                "${DISCOVERY_TIMEOUT_MS / 1000}s each. This can happen when the official CFMOTO app is " +
+                "already connected to the motorcycle, or when the T-Box is still starting up after " +
+                "Wi-Fi association."
+        )
+    }
+
+    /**
+     * One short NSD window so a Back→Up dash return is not blocked for 30s on a
+     * link that is about to bounce. The session service retries this until the
+     * dash-return budget expires; the full wake-probe tail stays on first connect.
+     */
+    private suspend fun discoverForResumeWithRetry(link: TBoxLink, expectedModelId: String?): TBoxHost {
+        if (link is TBoxLink.WifiDirect) return discoverOverWifiDirect(link)
+        if (link is TBoxLink.PhoneHotspot) return discoverOverPhoneHotspot(link, expectedModelId)
+        try {
+            return withTimeout(RESUME_DISCOVERY_TIMEOUT_MS) { discoverWithAndroidNsd(link, expectedModelId) }
+        } catch (timeout: TimeoutCancellationException) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            throw IllegalStateException(
+                "The EasyConn service was not advertised in the dash-return window. " +
+                    "The rider may still be on the stock instrument cluster."
+            )
+        }
+    }
+
+    private suspend fun finishInfrastructureDiscoveryOrThrow(
+        link: TBoxLink,
+        expectedModelId: String?,
+        notFoundMessage: String
+    ): TBoxHost {
         // Infrastructure fallback: a probe ACK on an AP link is preferably spent re-arming one more
         // NSD window, because a resolved advertisement carries the package name too.
         if (sendEasyConnWakeProbe(link) != null) {
@@ -564,12 +629,7 @@ class RideDaemonTransport(
                 return TBoxHost(peerAddress, fallbackPort, fallbackIdentity)
             }
         }
-        throw IllegalStateException(
-            "The EasyConn service was not advertised in $DISCOVERY_MAX_ATTEMPTS discovery windows of " +
-                "${DISCOVERY_TIMEOUT_MS / 1000}s each. This can happen when the official CFMOTO app is " +
-                "already connected to the motorcycle, or when the T-Box is still starting up after " +
-                "Wi-Fi association."
-        )
+        throw IllegalStateException(notFoundMessage)
     }
 
     /**
@@ -1481,6 +1541,7 @@ class RideDaemonTransport(
         const val DISCOVERY_TIMEOUT_MS = 15_000L
         const val DISCOVERY_MAX_ATTEMPTS = 2
         const val DISCOVERY_RETRY_DELAY_MS = 500L
+        const val RESUME_DISCOVERY_TIMEOUT_MS = 5_000L
         const val EC_CONNECT_TIMEOUT_MS = 10_000
         // Wake-probe fallback (see sendEasyConnWakeProbe): well-known port and frame layout
         // reverse-engineered by OpenCfMoto/OpenMoto, not part of the advertised EasyConn contract.
