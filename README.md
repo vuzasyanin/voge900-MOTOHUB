@@ -22,6 +22,10 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 
 A default source build does pairing, mirroring and diagnostics. Android Auto needs identity files in `tooling/private/android-auto/` and `-PincludeAndroidAutoIdentity=true`. See [`documentation/`](documentation/).
 
+## SAFETY
+This is experimental software, not factory equipment. Do not rely on it as your only navigation. Configure routes and modes while parked. Use it at your own risk and keep your attention on the road.
+MOTO-HUB is an independent project. It is not affiliated with, endorsed by, or an official product of VOGE, Loncin, CFMOTO, Carbit, or Google. Android Auto is a trademark of Google LLC. VOGE and related names belong to their owners.
+
 ## License
 
 [AGPL-3.0](LICENSE). Independent fork; VOGE, Loncin, EasyConn, Android Auto and related names remain their owners'.
