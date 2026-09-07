@@ -50,12 +50,12 @@ final class SimulatorModel: ObservableObject {
 
         var label: String {
             switch self {
-            case .automatic: return "Auto · TFT 800 x 480 / app 800 x 384"
-            case .landscapeSD: return "Full canvas · Landscape 800 x 480"
-            case .landscapeHD: return "Full canvas · Landscape 1280 x 720"
-            case .portraitSD: return "Full canvas · Portrait 720 x 1280"
-            case .portraitHD: return "Full canvas · Portrait 1080 x 1920"
-            case .manual: return "Manuale"
+            case .automatic: return "Авто · TFT 800 x 480 / app 800 x 384"
+            case .landscapeSD: return "Весь экран · альбом 800 x 480"
+            case .landscapeHD: return "Весь экран · альбом 1280 x 720"
+            case .portraitSD: return "Весь экран · портрет 720 x 1280"
+            case .portraitHD: return "Весь экран · портрет 1080 x 1920"
+            case .manual: return "Вручную"
             }
         }
 
@@ -125,11 +125,11 @@ final class SimulatorModel: ObservableObject {
         var label: String {
             switch self {
             case .motohub: return "MOTO-HUB Simulator"
-            case .cfdl16: return "CFDL16 legacy · 37416"
-            case .cfdl26Portrait: return "CFDL26 portrait · 37426"
-            case .cfdl26Landscape: return "CFDL26 landscape · 37426"
+            case .cfdl16: return "CFDL16 старый · 37416"
+            case .cfdl26Portrait: return "CFDL26 портрет · 37426"
+            case .cfdl26Landscape: return "CFDL26 альбом · 37426"
             case .nk800Crcp: return "800NK CRCP · 66660703"
-            case .nk800Touch: return "800NK touch · 37426"
+            case .nk800Touch: return "800NK тач · 37426"
             case .model66660742: return "CFDL16 MotoPlay · 66660742"
             }
         }
@@ -391,21 +391,21 @@ final class SimulatorModel: ObservableObject {
               geometry.safeY >= 0,
               geometry.safeWidth > 15,
               geometry.safeHeight > 15 else {
-            errorMessage = "Le dimensioni del TFT e dell'area app non sono valide."
+            errorMessage = "Неверные размеры TFT и зоны приложения."
             return
         }
         guard geometry.safeX + geometry.safeWidth <= geometry.displayWidth,
               geometry.safeY + geometry.safeHeight <= geometry.displayHeight else {
-            errorMessage = "L'area app deve essere interamente contenuta nel TFT fisico."
+            errorMessage = "Зона приложения должна целиком входить в TFT."
             return
         }
         let playerPath = ffplayPath
         guard playerPath != "ffplay" else {
-            errorMessage = "ffplay non è stato trovato. Installa FFmpeg oppure verifica /opt/homebrew/bin/ffplay."
+            errorMessage = "ffplay не найден. Установите FFmpeg или проверьте /opt/homebrew/bin/ffplay."
             return
         }
         guard let heartbeatValue = Double(heartbeat), heartbeatValue > 0 else {
-            errorMessage = "L'intervallo heartbeat deve essere maggiore di zero."
+            errorMessage = "Интервал heartbeat должен быть больше нуля."
             return
         }
         let configuration = CoreConfiguration(
@@ -433,29 +433,16 @@ final class SimulatorModel: ObservableObject {
         process.standardOutput = pipe
         process.standardError = pipe
         process.terminationHandler = { [weak self] process in
+            let status = process.terminationStatus
+            guard let model = self else { return }
             Task { @MainActor in
-                guard let self else { return }
-                let shouldRestart = self.restartRequested
-                self.restartRequested = false
-                self.stopping = false
-                // If stop() already cleared these, re-clearing is harmless.
-                self.process = nil
-                self.activeCoreConfiguration = nil
-                self.coreStarted = false
-                self.running = false
-                self.phoneIP = ""
-                self.controlPort = 0
-                self.logLines.append("Core terminato con codice \(process.terminationStatus).")
-                if shouldRestart && !self.coreStarted {
-                    self.logLines.append("Riavvio il core con la geometria aggiornata.")
-                    self.start()
-                }
+                model.handleCoreTermination(status: status)
             }
         }
         do {
             try process.run()
         } catch {
-            errorMessage = "Impossibile avviare il core: \(error.localizedDescription)"
+            errorMessage = "Не удалось запустить ядро: \(error.localizedDescription)"
             return
         }
         self.process = process
@@ -511,7 +498,7 @@ final class SimulatorModel: ObservableObject {
         statusTask = nil
         running = false
         phoneIP = ""
-        logLines.append("Configurazione modificata: riavvio il simulatore per applicare TFT e area app.")
+        logLines.append("Настройки изменены: перезапуск симулятора, чтобы применить TFT и зону.")
         proc.terminate()
         // Force kill after 1.5s if graceful shutdown didn't work.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -559,14 +546,14 @@ final class SimulatorModel: ObservableObject {
     }
 
     var sessionLabel: String {
-        if running { return "Telefono collegato: \(phoneIP)" }
-        if coreStarted { return "Core avviato: in attesa di MOTO-HUB" }
-        return "Simulatore fermo"
+        if running { return "Телефон в сети: \(phoneIP)" }
+        if coreStarted { return "Ядро запущено: ждём MOTO-HUB" }
+        return "Симулятор стоп"
     }
 
     var geometryLabel: String {
-        guard let geometry = currentGeometry else { return "Geometria non valida" }
-        return "\(compatibilityProfile.label) · TFT \(geometry.displayWidth) x \(geometry.displayHeight) · area app \(geometry.safeWidth) x \(geometry.safeHeight) @(\(geometry.safeX), \(geometry.safeY))"
+        guard let geometry = currentGeometry else { return "Геометрия неверна" }
+        return "\(compatibilityProfile.label) · TFT \(geometry.displayWidth) x \(geometry.displayHeight) · зона \(geometry.safeWidth) x \(geometry.safeHeight) @(\(geometry.safeX), \(geometry.safeY))"
     }
 
     private func readOutput(_ pipe: Pipe) {
@@ -579,9 +566,8 @@ final class SimulatorModel: ObservableObject {
                 if data.isEmpty { break }
                 let text = String(decoding: data, as: UTF8.self)
                 let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    lines.forEach(self.consumeLogLine)
+                DispatchQueue.main.async { [weak self] in
+                    self?.consumeLogLines(lines)
                 }
             }
         }
@@ -604,7 +590,7 @@ final class SimulatorModel: ObservableObject {
 
     private func post(path: String, body: [String: Any]? = nil) async {
         guard let controlURL else {
-            await MainActor.run { errorMessage = "Il core non ha ancora pubblicato la porta di controllo." }
+            await MainActor.run { errorMessage = "Ядро ещё не открыло порт управления." }
             return
         }
         var request = URLRequest(url: controlURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))))
@@ -616,8 +602,30 @@ final class SimulatorModel: ObservableObject {
         do {
             _ = try await URLSession.shared.data(for: request)
         } catch {
-            await MainActor.run { errorMessage = "Comando fallito: \(error.localizedDescription)" }
+            await MainActor.run { errorMessage = "Сбой команды: \(error.localizedDescription)" }
         }
+    }
+
+    private func handleCoreTermination(status: Int32) {
+        let shouldRestart = restartRequested
+        restartRequested = false
+        stopping = false
+        // If stop() already cleared these, re-clearing is harmless.
+        process = nil
+        activeCoreConfiguration = nil
+        coreStarted = false
+        running = false
+        phoneIP = ""
+        controlPort = 0
+        logLines.append("Ядро завершено, код \(status).")
+        if shouldRestart && !coreStarted {
+            logLines.append("Перезапуск ядра с новой геометрией.")
+            start()
+        }
+    }
+
+    private func consumeLogLines(_ lines: [String]) {
+        lines.forEach(consumeLogLine)
     }
 
     private func consumeLogLine(_ line: String) {
@@ -637,7 +645,7 @@ private struct StatusResponse: Decodable {
 }
 
 private extension SimulatorModel {
-    var processButtonTitle: String { coreStarted ? "Ferma" : "Avvia" }
+    var processButtonTitle: String { coreStarted ? "Стоп" : "Старт" }
     var processButtonColor: Color { coreStarted ? .red : Color(red: 0.18, green: 0.85, blue: 0.51) }
     var statusIcon: String {
         if running { return "antenna.radiowaves.left.and.right" }
@@ -679,7 +687,7 @@ struct ContentView: View {
         }
         .frame(minWidth: 720, minHeight: 600)
         .background(Color(NSColor.windowBackgroundColor))
-        .alert("Errore", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
+        .alert("Ошибка", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(model.errorMessage ?? "")
@@ -707,7 +715,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("MOTO-HUB T-Box Simulator")
                     .font(.title2.weight(.semibold))
-                Text("Emula il T-Box CFMOTO per testare MOTO-HUB senza la moto")
+                Text("Эмуляция T-Box CFMOTO для тестов MOTO-HUB без мото")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -720,7 +728,7 @@ struct ContentView: View {
                     .fill(model.statusColor)
                     .frame(width: 10, height: 10)
                     .animation(.easeInOut(duration: 0.3), value: model.running)
-                Text(model.running ? "Connesso" : model.coreStarted ? "In attesa" : "Fermo")
+                Text(model.running ? "Связь" : model.coreStarted ? "Ожидание" : "Стоп")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -746,12 +754,12 @@ struct ContentView: View {
     private var settingsSection: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 14) {
-                Label("Configurazione T-Box", systemImage: "gearshape.2")
+                Label("Настройка T-Box", systemImage: "gearshape.2")
                     .font(.headline)
 
                 // Profile row
                 HStack(spacing: 20) {
-                    LabeledContent("Profilo T-Box") {
+                    LabeledContent("Профиль T-Box") {
                         Picker("", selection: $model.compatibilityProfile) {
                             ForEach(SimulatorModel.CompatibilityProfile.allCases) { profile in
                                 Text(profile.label).tag(profile)
@@ -760,7 +768,7 @@ struct ContentView: View {
                         .labelsHidden()
                         .frame(width: 240)
                     }
-                    LabeledContent("Profilo display") {
+                    LabeledContent("Профиль экрана") {
                         Picker("", selection: $model.displayProfile) {
                             ForEach(SimulatorModel.DisplayProfile.allCases) { profile in
                                 Text(profile.label).tag(profile)
@@ -783,22 +791,22 @@ struct ContentView: View {
                 Divider()
 
                 // Geometry fields
-                Label("Geometria display", systemImage: "rectangle.split.sidebar")
+                Label("Геометрия экрана", systemImage: "rectangle.split.sidebar")
                     .font(.headline)
 
                 VStack(spacing: 10) {
                     // TFT physical
                     HStack(spacing: 12) {
-                        Text("TFT fisico")
+                        Text("TFT экран")
                             .frame(width: 80, alignment: .leading)
                             .foregroundStyle(.secondary)
-                        LabeledContent("Larghezza") {
+                        LabeledContent("Ширина") {
                             TextField("800", text: $model.displayWidth)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 80)
                                 .multilineTextAlignment(.trailing)
                         }
-                        LabeledContent("Altezza") {
+                        LabeledContent("Высота") {
                             TextField("480", text: $model.displayHeight)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 80)
@@ -809,7 +817,7 @@ struct ContentView: View {
 
                     // App area
                     HStack(spacing: 12) {
-                        Text("Area app")
+                        Text("Зона app")
                             .frame(width: 80, alignment: .leading)
                             .foregroundStyle(.secondary)
                         LabeledContent("X") {
@@ -844,13 +852,13 @@ struct ContentView: View {
                 if model.hasPendingCoreConfiguration {
                     HStack(spacing: 10) {
                         Label(
-                            "Configurazione display modificata: il core attivo usa ancora la geometria precedente.",
+                            "Экран изменён: активное ядро ещё работает со старой геометрией.",
                             systemImage: "exclamationmark.triangle.fill"
                         )
                         .font(.caption)
                         .foregroundStyle(.orange)
                         Spacer()
-                        Button("Riavvia e applica") {
+                        Button("Перезапуск") {
                             model.restartToApplyCoreConfiguration()
                         }
                         .controlSize(.small)
@@ -859,7 +867,7 @@ struct ContentView: View {
                     .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
                 }
 
-                Text("La preview mostra il TFT completo; le zone esterne all'area app rappresentano lo spazio riservato alle informazioni della moto.")
+                Text("Превью — весь TFT; тёмные зоны вокруг области приложения — место под панель мото.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -876,21 +884,21 @@ struct ContentView: View {
                     .frame(width: 130, height: 130)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("Pairing QR", systemImage: "qrcode")
+                    Label("QR-пара", systemImage: "qrcode")
                         .font(.headline)
 
-                    Text("Scansiona questo QR dall'app MOTO-HUB per connetterti al simulatore.")
+                    Text("Отсканируйте QR в MOTO-HUB, чтобы подключиться к симулятору.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
 
                     HStack(spacing: 12) {
                         LabeledContent("SSID") {
-                            TextField("SSID Wi-Fi di casa", text: $model.networkSSID)
+                            TextField("SSID домашней Wi-Fi", text: $model.networkSSID)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 200)
                         }
-                        LabeledContent("Password") {
-                            SecureField("Password Wi-Fi", text: $model.networkPassword)
+                        LabeledContent("Пароль") {
+                            SecureField("Пароль Wi-Fi", text: $model.networkPassword)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 180)
                         }
@@ -899,7 +907,7 @@ struct ContentView: View {
 
                     HStack(spacing: 8) {
                         Button(action: model.copyPairingPayload) {
-                            Label("Copia QR", systemImage: "doc.on.doc")
+                            Label("Копия QR", systemImage: "doc.on.doc")
                         }
                         .controlSize(.small)
 
@@ -929,7 +937,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 if model.coreStarted {
-                    Label("Preview TFT in ffplay", systemImage: "display")
+                    Label("Превью TFT в ffplay", systemImage: "display")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -952,21 +960,21 @@ struct ContentView: View {
     private var inputSection: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 14) {
-                Label("Input simulati", systemImage: "hand.point.up")
+                Label("Эмуляция ввода", systemImage: "hand.point.up")
                     .font(.headline)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Touch / Gesture")
+                    Text("Тач / жесты")
                         .font(.subheadline.weight(.medium))
                     HStack(spacing: 8) {
-                        Button("Tap al centro") { model.sendTap() }
+                        Button("Тап в центре") { model.sendTap() }
                             .controlSize(.small)
                         Button("Pinch") { model.sendGesture("/gesture/pinch") }
                             .controlSize(.small)
-                        Button("Ruota") { model.sendGesture("/gesture/rotate") }
+                        Button("Поворот") { model.sendGesture("/gesture/rotate") }
                             .controlSize(.small)
                         Spacer()
-                        Text("Coordinate relative all'area app")
+                        Text("Координаты относительно зоны app")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
@@ -975,22 +983,22 @@ struct ContentView: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Handlebar Controls")
+                    Text("Кнопки руля")
                         .font(.subheadline.weight(.medium))
                     HStack(spacing: 8) {
                         Group {
-                            Button("Up") { model.sendHandlebar("volumeUp") }
-                            Button("Up ×2") { model.sendHandlebar("volumeUpDouble") }
-                            Button("Down") { model.sendHandlebar("volumeDown") }
-                            Button("Down ×2") { model.sendHandlebar("volumeDownDouble") }
+                            Button("Вверх") { model.sendHandlebar("volumeUp") }
+                            Button("Вверх ×2") { model.sendHandlebar("volumeUpDouble") }
+                            Button("Вниз") { model.sendHandlebar("volumeDown") }
+                            Button("Вниз ×2") { model.sendHandlebar("volumeDownDouble") }
                         }
                         .controlSize(.small)
 
                         Divider().frame(height: 16)
 
                         Group {
-                            Button("Select") { model.sendHandlebar("enter") }
-                            Button("Hold") { model.sendHandlebar("enterLong") }
+                            Button("Выбор") { model.sendHandlebar("enter") }
+                            Button("Удерж") { model.sendHandlebar("enterLong") }
                             Button("×2") { model.sendHandlebar("enterDouble") }
                         }
                         .controlSize(.small)
@@ -1007,7 +1015,7 @@ struct ContentView: View {
 
                         Spacer()
                     }
-                    Text("Gesti logici, non eventi Bluetooth reali")
+                    Text("Логические жесты, не Bluetooth-события")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -1025,7 +1033,7 @@ struct ContentView: View {
                     .font(.headline)
 
                 if model.logLines.isEmpty {
-                    Text("Nessun log — avvia il simulatore per vedere l'output del core.")
+                    Text("Нет логов — запустите симулятор, чтобы увидеть вывод ядра.")
                         .font(.callout)
                         .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity, alignment: .center)

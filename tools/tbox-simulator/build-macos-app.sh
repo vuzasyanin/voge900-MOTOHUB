@@ -41,7 +41,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Il simulatore emula il T-Box sulla rete locale per testare MOTO-HUB.</string>
+	<string>Симулятор эмулирует T-Box в локальной сети для тестов MOTO-HUB.</string>
 </dict>
 </plist>
 PLIST
