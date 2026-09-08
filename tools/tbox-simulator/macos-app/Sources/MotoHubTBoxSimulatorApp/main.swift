@@ -14,6 +14,9 @@ struct MotoHubTBoxSimulatorApp: App {
             ContentView(model: appDelegate.model)
                 .frame(minWidth: 780, minHeight: 700)
                 .padding(22)
+                .onAppear {
+                    SimulatorAppDelegate.becomeRegularApp()
+                }
         }
     }
 }
@@ -22,8 +25,37 @@ struct MotoHubTBoxSimulatorApp: App {
 final class SimulatorAppDelegate: NSObject, NSApplicationDelegate {
     let model = SimulatorModel()
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.becomeRegularApp()
+        DispatchQueue.main.async {
+            Self.becomeRegularApp()
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        Self.becomeRegularApp()
+        return true
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         model.stop()
+    }
+
+    /// SPM-built executables start as command-line tools (`activationPolicy == .prohibited`)
+    /// and otherwise never show a Dock icon or window when launched via `open`.
+    static func becomeRegularApp() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        for window in NSApp.windows {
+            window.isRestorable = false
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
     }
 }
 

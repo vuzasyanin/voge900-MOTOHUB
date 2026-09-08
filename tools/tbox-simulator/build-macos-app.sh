@@ -40,6 +40,10 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<string>0.1.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Симулятор эмулирует T-Box в локальной сети для тестов MOTO-HUB.</string>
 </dict>

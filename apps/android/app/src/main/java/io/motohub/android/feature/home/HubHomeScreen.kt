@@ -74,7 +74,9 @@ import io.motohub.android.ui.components.HubBottomNavigation
 import io.motohub.android.ui.components.HubTab
 import io.motohub.android.ui.components.LivePill
 import io.motohub.android.ui.components.MonoLabel
+import io.motohub.android.ui.components.MotoHubActionRow
 import io.motohub.android.ui.components.MotoHubBackground
+import io.motohub.android.ui.components.MotoHubCardGroup
 import io.motohub.android.ui.theme.MotoHubAndroidAuto
 import io.motohub.android.ui.theme.MotoHubMirror
 import io.motohub.android.tbox.TBoxConflictDiagnostics
@@ -810,9 +812,19 @@ private fun ActiveSessionContent(
         androidAutoActive -> androidAutoStartupDetail ?: "Session is being prepared"
         else -> "Session is being prepared"
     }
+    val context = LocalContext.current
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         ActiveSessionHero(ready, modeName, statusText, modeColor)
+        if (androidAutoActive) {
+            MotoHubCardGroup {
+                MotoHubActionRow(
+                    title = motoHubText("Open Android Auto settings"),
+                    description = motoHubText("Jumps straight to the app where the menu above lives"),
+                    onClick = { AndroidAutoSelfModeHelp.openAndroidAutoSettings(context) }
+                )
+            }
+        }
         MonoLabel(motoHubText("SESSION ACTIONS"))
 
         if (androidAutoActive) {

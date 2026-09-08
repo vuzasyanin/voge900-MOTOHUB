@@ -502,9 +502,11 @@ private fun DiagnosticsDetail(
         }
         ToggleRow(
             title = motoHubText("Enable logging"),
-            description = motoHubText("Master switch for the diagnostic log. Off means nothing is recorded ") +
-                "at all - not just less detail. On by default; turn off only if you don't want " +
-                "MOTO-HUB keeping any local diagnostic history.",
+            description = motoHubText(
+                "Master switch for the diagnostic log. Off means nothing is recorded " +
+                    "at all - not just less detail. On by default; turn off only if you don't want " +
+                    "MOTO-HUB keeping any local diagnostic history."
+            ),
             checked = loggingEnabled,
             onCheckedChange = {
                 // Record the "why" before flipping off, and after flipping back on - the
@@ -523,10 +525,12 @@ private fun DiagnosticsDetail(
         )
         ToggleRow(
             title = motoHubText("Verbose T-Box logging"),
-            description = motoHubText("Full CLIENT_INFO, every candidate profile's score, unknown command ") +
-                "hex dumps, and Wi-Fi link quality. On by default so a problem's first " +
-                "occurrence is already captured; turn off for a lighter log. Has no effect " +
-                "while logging above is off.",
+            description = motoHubText(
+                "Full CLIENT_INFO, every candidate profile's score, unknown command " +
+                    "hex dumps, and Wi-Fi link quality. On by default so a problem's first " +
+                    "occurrence is already captured; turn off for a lighter log. Has no effect " +
+                    "while logging above is off."
+            ),
             checked = verboseLogging,
             enabled = loggingEnabled,
             onCheckedChange = {

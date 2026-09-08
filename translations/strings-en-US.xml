@@ -494,6 +494,16 @@
     <!-- Source: feature/ridedashboard/widget/WeatherWidget.kt -->
     <string name="legacy_retrying_every_15s_e5e3f7a4">RETRYING EVERY 15S</string>
     <!-- Source: feature/safety/SafetyDisclaimerDialog.kt -->
+    <string name="legacy_safety_warning_243ef82e">SAFETY WARNING</string>
+    <!-- Source: feature/safety/SafetyDisclaimerDialog.kt -->
+    <string name="legacy_riding_requires_your_full_attention_never_intera_96038a24">Riding requires your full attention. Never interact with MOTO-HUB, Android Auto, navigation, mirroring, trip recording, or any on-screen control while the motorcycle is moving.</string>
+    <!-- Source: feature/safety/SafetyDisclaimerDialog.kt -->
+    <string name="legacy_configure_and_verify_everything_only_while_parke_57e1b31b">Configure and verify everything only while parked. Use this application only in a completely safe and controlled situation. If conditions are not completely safe, do not use it.</string>
+    <!-- Source: feature/safety/SafetyDisclaimerDialog.kt -->
+    <string name="legacy_moto_hub_is_not_a_safety_device_and_cannot_preve_a3d43f2f">MOTO-HUB is not a safety device and cannot prevent distraction, crashes, injury, or damage. You are solely responsible for riding safely and obeying all applicable laws.</string>
+    <!-- Source: feature/safety/SafetyDisclaimerDialog.kt -->
+    <string name="legacy_i_understand_do_not_show_this_warning_again_e4526192">I understand — do not show this warning again</string>
+    <!-- Source: feature/safety/SafetyDisclaimerDialog.kt -->
     <string name="legacy_i_understand_and_continue_7ea73adb">I understand and continue</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
     <string name="legacy_android_auto_content_insets_7046c7dd">ANDROID AUTO CONTENT INSETS</string>
@@ -1321,4 +1331,82 @@
     <string name="legacy_import_qr_from_photo_b294f880">Import QR from photo</string>
     <!-- Source: feature/home/HubHomeScreen.kt -->
     <string name="legacy_scan_motorcycle_qr_code_cc47d360">Scan motorcycle QR code</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_handlebar_buttons_47b4fd2c">Handlebar buttons</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_drive_android_auto_with_the_motorcycle_s_buttons_ec16509d">Drive Android Auto with the motorcycle's buttons</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_on_9ff">On</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_auto_connect_and_recovery_57ed0872">Auto-connect and recovery</string>
+    <!-- Source: ui/components/MotoHubUi.kt -->
+    <string name="legacy_ride_26dd18">Ride</string>
+    <!-- Source: ui/components/MotoHubUi.kt -->
+    <string name="legacy_garage_7eb44747">Garage</string>
+    <!-- Source: ui/components/MotoHubUi.kt -->
+    <string name="legacy_settings_595d2043">Settings</string>
+    <!-- Source: ui/components/MotoHubUi.kt -->
+    <string name="legacy_nav_13103">Nav</string>
+    <!-- Source: ui/components/MotoHubUi.kt -->
+    <string name="legacy_trips_4d520ce">Trips</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_handlebar_7b449ccb">Handlebar</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_one_card_per_button_with_what_a_press_a_double_p_e88303f5">One card per button, with what a press, a double press and a hold each do. Teach the handlebar so the app knows which buttons yours actually has.</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_motorcycle_bluetooth_88c59adf">Motorcycle Bluetooth</string>
+    <!-- Source: feature/controls/BluetoothStatus.kt -->
+    <string name="legacy_bluetooth_is_off_turn_it_on_then_pair_the_motorc_5375bc65">Bluetooth is off — turn it on, then pair the motorcycle.</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_bluetooth_settings_ed5eb975">Bluetooth settings</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_listening_2ece009b">Listening</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_press_a_handlebar_button_fd958503">Press a handlebar button</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_teach_my_handlebar_51393162">Teach my handlebar</string>
+    <!-- Source: feature/controls/HandlebarCalibration.kt -->
+    <string name="legacy_up_abb">Up</string>
+    <!-- Source: feature/controls/HandlebarCalibration.kt -->
+    <string name="legacy_press_49cb423">Press</string>
+    <!-- Source: feature/controls/HandlebarCalibration.kt -->
+    <string name="legacy_double_press_f0eba754">Double press</string>
+    <!-- Source: feature/controls/HandlebarCalibration.kt -->
+    <string name="legacy_hold_2268df">Hold</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_not_detected_yet_d1e8f877">not detected yet</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_the_motorcycle_s_buttons_reach_the_phone_over_bl_356cbf0d">The motorcycle's buttons reach the phone over Bluetooth as media keys. While a session is streaming, MOTO-HUB can capture them and drive Android Auto navigation instead of the music player.</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_buttons_control_android_auto_3dc44642">Buttons control Android Auto</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_requires_the_phone_paired_to_the_motorcycle_s_bl_dda6960a">Requires the phone paired to the motorcycle's Bluetooth. Music keeps playing but its buttons are captured while a session runs.</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_button_mapping_815600">Button mapping</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_what_each_press_double_press_and_hold_does_97201ad9">What each press, double press and hold does</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_music_volume_9fa56d95">MUSIC VOLUME</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_while_capture_is_on_the_volume_buttons_navigate__9e410bf">While capture is on, the volume buttons navigate instead of changing volume — set your listening level here.</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_timing_937fe44a">TIMING</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_how_long_the_app_waits_before_deciding_a_press_w_fbe08ef2">How long the app waits before deciding a press was double, or held.</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_snappy_singles_330a9d7e">Snappy singles</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_a_single_press_acts_immediately_instead_of_waiti_ebd37a80">A single press acts immediately instead of waiting out the double-press window. A double still works - it just runs the single first.</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_hold_gestures_a5df4e6b">Hold gestures</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_turn_off_if_your_handlebar_needs_a_long_physical_c92718d1">Turn off if your handlebar needs a long physical press for every click - otherwise those presses are eaten as holds.</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_double_press_window_a8b0763c">Double press window</string>
+    <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
+    <string name="legacy_hold_time_bba08d6e">Hold time</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_master_switch_for_the_diagnostic_log_off_means_n_a4e80405">Master switch for the diagnostic log. Off means nothing is recorded at all - not just less detail. On by default; turn off only if you don't want MOTO-HUB keeping any local diagnostic history.</string>
+    <!-- Source: feature/settings/SettingsScreen.kt -->
+    <string name="legacy_full_client_info_every_candidate_profile_s_score_61e14bef">Full CLIENT_INFO, every candidate profile's score, unknown command hex dumps, and Wi-Fi link quality. On by default so a problem's first occurrence is already captured; turn off for a lighter log. Has no effect while logging above is off.</string>
 </resources>

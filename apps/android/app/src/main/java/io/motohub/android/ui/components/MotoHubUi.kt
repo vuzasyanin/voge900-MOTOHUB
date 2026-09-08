@@ -130,14 +130,14 @@ fun ConnectionRail(state: ConnectionState, modifier: Modifier = Modifier) {
 }
 
 /**
- * "MOTO-HUB CORE"/"MOTO-HUB ADVANCED" drops in from above with a physical spring bounce every
+ * "VOGE900 MOTO-HUB"/"MOTO-HUB ADVANCED" drops in from above with a physical spring bounce every
  * time Home mounts - a single bold accent color per edition (Core's brand lime, Advanced's
  * racing red, matching its app icon) rather than a shifting rainbow: sober, but unmistakable.
  */
 @Composable
 private fun EditionWaveText(modifier: Modifier = Modifier) {
     val isPro = io.motohub.android.BuildConfig.IS_PRO
-    val label = if (isPro) "MOTO-HUB ADVANCED" else "MOTO-HUB CORE"
+    val label = if (isPro) "MOTO-HUB ADVANCED" else "VOGE900 MOTO-HUB"
     val accentColor = if (isPro) EDITION_ADVANCED_RED else MaterialTheme.colorScheme.primary
 
     val offsetY = remember { Animatable(-64f) }
@@ -260,7 +260,7 @@ private fun NavItem(label: String, active: Boolean, modifier: Modifier = Modifie
     ) {
         NavIcon(label, active)
         Text(
-            text = label,
+            text = motoHubText(label),
             style = MaterialTheme.typography.labelSmall,
             fontFamily = FontFamily.SansSerif,
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,

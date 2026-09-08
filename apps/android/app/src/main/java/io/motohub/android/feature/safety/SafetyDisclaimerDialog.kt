@@ -57,7 +57,7 @@ fun SafetyDisclaimerDialog(
                     }
                 }
                 Text(
-                    text = "SAFETY WARNING",
+                    text = motoHubText("SAFETY WARNING"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
@@ -67,22 +67,28 @@ fun SafetyDisclaimerDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(
-                    text = "Riding requires your full attention. Never interact with MOTO-HUB, " +
-                        "Android Auto, navigation, mirroring, trip recording, or any on-screen " +
-                        "control while the motorcycle is moving.",
+                    text = motoHubText(
+                        "Riding requires your full attention. Never interact with MOTO-HUB, " +
+                            "Android Auto, navigation, mirroring, trip recording, or any on-screen " +
+                            "control while the motorcycle is moving."
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Configure and verify everything only while parked. Use this application " +
-                        "only in a completely safe and controlled situation. If conditions are not " +
-                        "completely safe, do not use it.",
+                    text = motoHubText(
+                        "Configure and verify everything only while parked. Use this application " +
+                            "only in a completely safe and controlled situation. If conditions are not " +
+                            "completely safe, do not use it."
+                    ),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
-                    text = "MOTO-HUB is not a safety device and cannot prevent distraction, crashes, " +
-                        "injury, or damage. You are solely responsible for riding safely and obeying " +
-                        "all applicable laws.",
+                    text = motoHubText(
+                        "MOTO-HUB is not a safety device and cannot prevent distraction, crashes, " +
+                            "injury, or damage. You are solely responsible for riding safely and obeying " +
+                            "all applicable laws."
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -97,7 +103,7 @@ fun SafetyDisclaimerDialog(
                         onCheckedChange = onDoNotShowAgainChanged
                     )
                     Text(
-                        text = "I understand — do not show this warning again",
+                        text = motoHubText("I understand — do not show this warning again"),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
