@@ -1334,7 +1334,7 @@
     <!-- Source: feature/settings/SettingsScreen.kt -->
     <string name="legacy_handlebar_buttons_47b4fd2c">Handlebar buttons</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
-    <string name="legacy_drive_android_auto_with_the_motorcycle_s_buttons_ec16509d">Drive Android Auto with the motorcycle's buttons</string>
+    <string name="legacy_drive_android_auto_with_the_motorcycle_s_buttons_ec16509d">Drive Android Auto with the motorcycle\'s buttons</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
     <string name="legacy_on_9ff">On</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
@@ -1347,8 +1347,6 @@
     <string name="legacy_settings_595d2043">Settings</string>
     <!-- Source: ui/components/MotoHubUi.kt -->
     <string name="legacy_nav_13103">Nav</string>
-    <!-- Source: ui/components/MotoHubUi.kt -->
-    <string name="legacy_trips_4d520ce">Trips</string>
     <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
     <string name="legacy_handlebar_7b449ccb">Handlebar</string>
     <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
@@ -1376,11 +1374,11 @@
     <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
     <string name="legacy_not_detected_yet_d1e8f877">not detected yet</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
-    <string name="legacy_the_motorcycle_s_buttons_reach_the_phone_over_bl_356cbf0d">The motorcycle's buttons reach the phone over Bluetooth as media keys. While a session is streaming, MOTO-HUB can capture them and drive Android Auto navigation instead of the music player.</string>
+    <string name="legacy_the_motorcycle_s_buttons_reach_the_phone_over_bl_356cbf0d">The motorcycle\'s buttons reach the phone over Bluetooth as media keys. While a session is streaming, MOTO-HUB can capture them and drive Android Auto navigation instead of the music player.</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
     <string name="legacy_buttons_control_android_auto_3dc44642">Buttons control Android Auto</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
-    <string name="legacy_requires_the_phone_paired_to_the_motorcycle_s_bl_dda6960a">Requires the phone paired to the motorcycle's Bluetooth. Music keeps playing but its buttons are captured while a session runs.</string>
+    <string name="legacy_requires_the_phone_paired_to_the_motorcycle_s_bl_dda6960a">Requires the phone paired to the motorcycle\'s Bluetooth. Music keeps playing but its buttons are captured while a session runs.</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
     <string name="legacy_button_mapping_815600">Button mapping</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
@@ -1406,7 +1404,7 @@
     <!-- Source: feature/controls/HandlebarMappingScreen.kt -->
     <string name="legacy_hold_time_bba08d6e">Hold time</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
-    <string name="legacy_master_switch_for_the_diagnostic_log_off_means_n_a4e80405">Master switch for the diagnostic log. Off means nothing is recorded at all - not just less detail. On by default; turn off only if you don't want MOTO-HUB keeping any local diagnostic history.</string>
+    <string name="legacy_master_switch_for_the_diagnostic_log_off_means_n_a4e80405">Master switch for the diagnostic log. Off means nothing is recorded at all - not just less detail. On by default; turn off only if you don\'t want MOTO-HUB keeping any local diagnostic history.</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
-    <string name="legacy_full_client_info_every_candidate_profile_s_score_61e14bef">Full CLIENT_INFO, every candidate profile's score, unknown command hex dumps, and Wi-Fi link quality. On by default so a problem's first occurrence is already captured; turn off for a lighter log. Has no effect while logging above is off.</string>
+    <string name="legacy_full_client_info_every_candidate_profile_s_score_61e14bef">Full CLIENT_INFO, every candidate profile\'s score, unknown command hex dumps, and Wi-Fi link quality. On by default so a problem\'s first occurrence is already captured; turn off for a lighter log. Has no effect while logging above is off.</string>
 </resources>
