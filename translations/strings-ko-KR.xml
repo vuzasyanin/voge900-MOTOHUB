@@ -1276,4 +1276,12 @@
     <string name="legacy_several_manufacturers_ship_the_same_dashboard_so_49305d38">여러 제조사가 같은 계기판 소프트웨어를 자사 브랜드로 사용하므로 본인의 오토바이일 수 있습니다. 본인 계기판에서 스캔한 경우에만 계속하세요.</string>
     <!-- Source: feature/pairing/UnverifiedQrDialog.kt -->
     <string name="legacy_use_these_details_52f852ac">이 정보 사용</string>
+    <string name="legacy_moto_hub_connection_progress_c260af34">MOTO-HUB 연결 진행 상황</string>
+    <string name="legacy_looking_for_1_s_9983a22f">%1$s 검색 중</string>
+    <string name="legacy_connecting_to_1_s_2f10e3b8">%1$s에 연결 중</string>
+    <string name="legacy_keep_moto_hub_open_closing_it_stops_the_search_54ec507">MOTO-HUB를 열어 두세요. 닫으면 검색이 중단됩니다.</string>
+    <string name="legacy_waiting_for_the_motorcycle_24d361aa">오토바이 대기 중</string>
+    <string name="legacy_waiting_for_s_c5c92cf8">%s 대기 중</string>
+    <string name="legacy_moto_hub_will_connect_on_its_own_when_the_dashbo_9f3fe52b">계기판이 켜지면 MOTO-HUB가 알아서 연결합니다.</string>
+    <string name="legacy_shown_while_moto_hub_watches_for_the_motorcycle__5410550d">MOTO-HUB가 오토바이의 Wi-Fi를 기다리는 동안 표시됩니다.</string>
 </resources>

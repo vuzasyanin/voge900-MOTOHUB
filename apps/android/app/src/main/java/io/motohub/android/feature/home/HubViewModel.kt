@@ -6,6 +6,7 @@ import io.motohub.android.i18n.motoHubText
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.motohub.android.data.MotorcycleProfileStore
+import io.motohub.android.session.ConnectionProgressNotification
 import io.motohub.android.session.HubSessionState
 import io.motohub.android.session.MotorcycleProfile
 import io.motohub.android.session.SessionPhase
@@ -60,6 +61,17 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
     private val transport = SelectingTBoxTransport(application)
     private val capabilityStore = TBoxCapabilityStore(application)
     private var connectJob: Job? = null
+
+    /**
+     * The rider's own "no", remembered until a connection genuinely starts again.
+     *
+     * [cancelConnection] leaves the phase at NETWORK_SETUP_REQUIRED, which is exactly the phase
+     * auto-connect waits for, so a cancel used to be answered by a fresh automatic attempt one
+     * 5s cooldown later. Not saved state on purpose: it dies with the ViewModel, so a relaunch
+     * starts willing to try again.
+     */
+    var riderCancelledConnect: Boolean = false
+        private set
 
     init {
         ProjectionEventLog.record(
@@ -313,6 +325,10 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             showError(WifiGate.WIFI_OFF_MESSAGE)
             return
         }
+        // A connection is genuinely starting - manual Connect, the permission-grant retry, the
+        // reconnect after a mode stops, or an auto-connect the policy did let through. Whichever
+        // it was, the earlier cancel has been answered and must not keep suppressing anything.
+        riderCancelledConnect = false
         ProjectionEventLog.record("CONNECTION", "Connecting to saved T-Box AP ${profile.ssid}.")
         mutableUiState.value = mutableUiState.value.copy(
             session = mutableUiState.value.session.copy(
@@ -320,6 +336,9 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 message = motoHubText("Android is requesting a connection to %1\$s.", profile.ssid)
             )
         )
+        // The only sign outside this screen that anything is happening. It matters because the
+        // work does not survive the screen: see ConnectionProgressNotification.
+        ConnectionProgressNotification.show(getApplication(), profile.ssid, searching = false)
         connectJob = viewModelScope.launch {
             var establishedLink: io.motohub.android.tbox.TBoxLink? = null
             var sessionInstalled = false
@@ -361,6 +380,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 establishedLink = connected.getOrThrow()
                 ProjectionEventLog.record("NETWORK", "T-Box link established (${establishedLink.label}).")
 
+                ConnectionProgressNotification.show(getApplication(), profile.ssid, searching = true)
                 mutableUiState.value = mutableUiState.value.copy(
                     session = mutableUiState.value.session.copy(
                         phase = SessionPhase.DISCOVERING_TBOX,
@@ -412,6 +432,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 // the group alive because it has no ConnectivityManager callback to release it.
                 if (!sessionInstalled) establishedLink?.disconnect()
                 connectJob = null
+                ConnectionProgressNotification.clear(getApplication())
                 ProjectionEventLog.debug("CONNECTION", "Connection coroutine completed.")
             }
         }
@@ -423,6 +444,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         ProjectionEventLog.record("CONNECTION", "User cancelled the connection attempt.")
+        riderCancelledConnect = true
         viewModelScope.launch {
             activeJob.cancelAndJoin()
             transport.stop()

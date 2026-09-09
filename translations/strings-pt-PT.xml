@@ -1287,4 +1287,12 @@
     <string name="legacy_several_manufacturers_ship_the_same_dashboard_so_49305d38">Vários fabricantes usam o mesmo software de painel com a sua própria marca, por isso pode muito bem ser a sua mota. Continue apenas se leu o código no painel da sua mota.</string>
     <!-- Source: feature/pairing/UnverifiedQrDialog.kt -->
     <string name="legacy_use_these_details_52f852ac">Usar estes dados</string>
+    <string name="legacy_moto_hub_connection_progress_c260af34">Progresso da ligação MOTO-HUB</string>
+    <string name="legacy_looking_for_1_s_9983a22f">À procura de %1$s</string>
+    <string name="legacy_connecting_to_1_s_2f10e3b8">A ligar a %1$s</string>
+    <string name="legacy_keep_moto_hub_open_closing_it_stops_the_search_54ec507">Mantenha o MOTO-HUB aberto: fechá-lo interrompe a procura.</string>
+    <string name="legacy_waiting_for_the_motorcycle_24d361aa">À espera da mota</string>
+    <string name="legacy_waiting_for_s_c5c92cf8">À espera de %s</string>
+    <string name="legacy_moto_hub_will_connect_on_its_own_when_the_dashbo_9f3fe52b">O MOTO-HUB liga-se sozinho quando o painel arrancar.</string>
+    <string name="legacy_shown_while_moto_hub_watches_for_the_motorcycle__5410550d">Mostrado enquanto o MOTO-HUB vigia o Wi-Fi da mota.</string>
 </resources>

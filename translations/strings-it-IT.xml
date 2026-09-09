@@ -705,4 +705,12 @@
     <string name="legacy_several_manufacturers_ship_the_same_dashboard_so_49305d38">Diversi produttori usano lo stesso software del cruscotto con il proprio marchio, quindi può benissimo essere la tua moto. Continua solo se hai inquadrato il cruscotto della tua moto.</string>
     <!-- Source: feature/pairing/UnverifiedQrDialog.kt -->
     <string name="legacy_use_these_details_52f852ac">Usa questi dati</string>
+    <string name="legacy_moto_hub_connection_progress_c260af34">Avanzamento connessione MOTO-HUB</string>
+    <string name="legacy_looking_for_1_s_9983a22f">Ricerca di %1$s</string>
+    <string name="legacy_connecting_to_1_s_2f10e3b8">Connessione a %1$s</string>
+    <string name="legacy_keep_moto_hub_open_closing_it_stops_the_search_54ec507">Tieni MOTO-HUB aperto: chiuderlo interrompe la ricerca.</string>
+    <string name="legacy_waiting_for_the_motorcycle_24d361aa">In attesa della moto</string>
+    <string name="legacy_waiting_for_s_c5c92cf8">In attesa di %s</string>
+    <string name="legacy_moto_hub_will_connect_on_its_own_when_the_dashbo_9f3fe52b">MOTO-HUB si collegherà da solo quando il cruscotto si accende.</string>
+    <string name="legacy_shown_while_moto_hub_watches_for_the_motorcycle__5410550d">Mostrato mentre MOTO-HUB attende il Wi-Fi della moto.</string>
 </resources>

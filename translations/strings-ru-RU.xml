@@ -746,4 +746,12 @@
     <string name="legacy_hold_time_bba08d6e">Время удержания</string>
     <string name="legacy_master_switch_for_the_diagnostic_log_off_means_n_a4e80405">Главный переключатель журнала диагностики. «Выкл» означает, что ничего не записывается — не только меньше деталей. По умолчанию включён; выключайте, только если не хотите, чтобы MOTO-HUB хранил локальную историю диагностики.</string>
     <string name="legacy_full_client_info_every_candidate_profile_s_score_61e14bef">Полный CLIENT_INFO, оценка каждого профиля-кандидата, hex-дампы неизвестных команд и качество Wi-Fi. По умолчанию включён, чтобы первая проблема уже была записана; выключите для более лёгкого журнала. Не действует, пока ведение журнала выше выключено.</string>
+    <string name="legacy_moto_hub_connection_progress_c260af34">Прогресс подключения MOTO-HUB</string>
+    <string name="legacy_looking_for_1_s_9983a22f">Поиск %1$s</string>
+    <string name="legacy_connecting_to_1_s_2f10e3b8">Подключение к %1$s</string>
+    <string name="legacy_keep_moto_hub_open_closing_it_stops_the_search_54ec507">Не закрывайте MOTO-HUB — закрытие прерывает поиск.</string>
+    <string name="legacy_waiting_for_the_motorcycle_24d361aa">Ожидание мотоцикла</string>
+    <string name="legacy_waiting_for_s_c5c92cf8">Ожидание %s</string>
+    <string name="legacy_moto_hub_will_connect_on_its_own_when_the_dashbo_9f3fe52b">MOTO-HUB подключится сам, когда приборка появится в сети.</string>
+    <string name="legacy_shown_while_moto_hub_watches_for_the_motorcycle__5410550d">Показывается, пока MOTO-HUB ждёт Wi-Fi мотоцикла.</string>
 </resources>

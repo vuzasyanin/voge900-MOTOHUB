@@ -83,8 +83,8 @@ android {
         // keep this identical to the PRO worktree's build.gradle.kts. They drifted after v1.1.4
         // (CORE reached 1.1.14/108 while ADVANCED sat at 1.1.6/100), which left a rider's
         // "MOTO-HUB 1.1.x" unable to identify which pair they actually had installed.
-        versionCode = 146
-        versionName = "0.0.5"
+        versionCode = 1000
+        versionName = "1.0.0"
         buildConfigField("boolean", "IS_PRO", "false")
         buildConfigField("String", "SENTRY_DSN", asBuildConfigString(coreSentryDsn))
         // -PsentryDebug=true makes the SDK narrate what it is doing to logcat. Telemetry that
@@ -114,6 +114,12 @@ android {
             isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true
+            // Studio treats a non-debuggable APK as release and then tries to install a
+            // baseline .dm against a package that is not on the device yet
+            // (INSTALL_BASELINE_PROFILE_FAILED / Package not found). Debug is never shipped.
+            installation {
+                enableBaselineProfile = false
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

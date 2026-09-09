@@ -1407,4 +1407,13 @@
     <string name="legacy_master_switch_for_the_diagnostic_log_off_means_n_a4e80405">Master switch for the diagnostic log. Off means nothing is recorded at all - not just less detail. On by default; turn off only if you don\'t want MOTO-HUB keeping any local diagnostic history.</string>
     <!-- Source: feature/settings/SettingsScreen.kt -->
     <string name="legacy_full_client_info_every_candidate_profile_s_score_61e14bef">Full CLIENT_INFO, every candidate profile\'s score, unknown command hex dumps, and Wi-Fi link quality. On by default so a problem\'s first occurrence is already captured; turn off for a lighter log. Has no effect while logging above is off.</string>
+    <!-- Connection progress notification and BikeWatch (phone in pocket). -->
+    <string name="legacy_moto_hub_connection_progress_c260af34">MOTO-HUB connection progress</string>
+    <string name="legacy_looking_for_1_s_9983a22f">Looking for %1$s</string>
+    <string name="legacy_connecting_to_1_s_2f10e3b8">Connecting to %1$s</string>
+    <string name="legacy_keep_moto_hub_open_closing_it_stops_the_search_54ec507">Keep MOTO-HUB open - closing it stops the search.</string>
+    <string name="legacy_waiting_for_the_motorcycle_24d361aa">Waiting for the motorcycle</string>
+    <string name="legacy_waiting_for_s_c5c92cf8">Waiting for %s</string>
+    <string name="legacy_moto_hub_will_connect_on_its_own_when_the_dashbo_9f3fe52b">MOTO-HUB will connect on its own when the dashboard comes up.</string>
+    <string name="legacy_shown_while_moto_hub_watches_for_the_motorcycle__5410550d">Shown while MOTO-HUB watches for the motorcycle\'s Wi-Fi.</string>
 </resources>
