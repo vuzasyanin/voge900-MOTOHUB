@@ -74,4 +74,27 @@ class TBoxCapabilitiesTest {
         assertEquals("65561", result?.flavor)
         assertEquals("48405", result?.channel)
     }
+
+    @Test
+    fun `reads the dash clock out of a raw CLIENT_INFO payload`() {
+        // An epoch in milliseconds does not fit in an Int, which is why this field has its own
+        // accessor: read as one it would come back as a truncated, meaningless number.
+        val payload =
+            """{"HUName":"VOGE","currentHUTime":1757836800000,"supportSyncCorrectTime":true}"""
+                .toByteArray(Charsets.UTF_8)
+
+        val result = decodeTBoxCapabilities(payload)
+
+        assertEquals(1_757_836_800_000L, result?.currentHuTimeMillis)
+        assertTrue(result?.syncCorrectTime == true)
+    }
+
+    @Test
+    fun `tells a dash uptime counter apart from a wall clock`() {
+        assertTrue(looksLikeDashUptime(86_400_000L))
+        assertTrue(looksLikeDashUptime(0L))
+        assertFalse(looksLikeDashUptime(1_757_836_800_000L))
+        // "Not reported" is not a verdict either way.
+        assertFalse(looksLikeDashUptime(null))
+    }
 }

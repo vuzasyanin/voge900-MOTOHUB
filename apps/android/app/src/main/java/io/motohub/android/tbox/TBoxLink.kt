@@ -9,6 +9,7 @@ import android.net.nsd.NsdManager
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import io.motohub.android.session.ProjectionEventLog
+import io.motohub.android.session.TBoxConnectionMode
 import java.net.Inet4Address
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -52,6 +53,15 @@ sealed interface TBoxLink {
      */
     fun detachForRecovery() = disconnect()
 
+    /**
+     * Discovery failed after the radio was up. A P2P group must stay so the next attempt can
+     * adopt it instead of tearing it down and paying for Xiaomi's refused first join; an
+     * access-point link has nothing extra to keep.
+     */
+    fun releaseAfterFailedDiscovery() {
+        if (this is WifiDirect) detachForRecovery() else disconnect()
+    }
+
     /** Starts NSD discovery over this link, hiding the network-bound vs. default-network overload. */
     fun startNsdDiscovery(
         nsdManager: NsdManager,
@@ -62,6 +72,19 @@ sealed interface TBoxLink {
 
     /** Whether a resolved NSD service on [resolvedNetwork] belongs to this link. */
     fun matchesResolvedNetwork(resolvedNetwork: Network?): Boolean
+
+    /**
+     * The transport this link turned out to be, so a completed connection can be recorded as the
+     * answer for next time. THINKERRIDE is deliberately not among the results: it rides the
+     * infrastructure path here and differs only in which side opens the TCP connection, which a
+     * link cannot report.
+     */
+    val transport: TBoxConnectionMode
+        get() = when (this) {
+            is WifiDirect -> TBoxConnectionMode.WIFI_DIRECT
+            is PhoneHotspot -> TBoxConnectionMode.PHONE_HOTSPOT
+            is Infrastructure -> TBoxConnectionMode.ACCESS_POINT
+        }
 
     class Infrastructure(override val network: Network) : TBoxLink {
         override val peerHint: Inet4Address? = null

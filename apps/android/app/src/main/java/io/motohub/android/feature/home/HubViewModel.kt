@@ -16,9 +16,11 @@ import io.motohub.android.session.ProjectionEventLog
 import io.motohub.android.session.TBoxConnectionMode
 import io.motohub.android.session.withMotorcycle
 import io.motohub.android.feature.pairing.TBoxQrPayload
+import io.motohub.android.feature.pairing.matching
 import io.motohub.android.androidauto.AndroidAutoRuntime
 import io.motohub.android.tbox.SelectingTBoxTransport
 import io.motohub.android.tbox.TBoxCapabilityStore
+import io.motohub.android.tbox.TBoxLink
 import io.motohub.android.tbox.TBoxLinkResolver
 import io.motohub.android.tbox.TBoxModelProfile
 import io.motohub.android.tbox.ProfileOverride
@@ -43,6 +45,14 @@ data class HubUiState(
     val ssid: String = "",
     val password: String = "",
     val connectionMode: TBoxConnectionMode = TBoxConnectionMode.AUTO,
+    /**
+     * Whether the rider actually touched the transport picker in this pass through the form.
+     *
+     * The form opens reset to [TBoxConnectionMode.AUTO], so its value alone cannot say whether
+     * AUTO is a choice or just the default nobody looked at - and saving it either way silently
+     * demoted a motorcycle the rider had pinned to Wi-Fi Direct.
+     */
+    val connectionModeEdited: Boolean = false,
     val formError: String? = null
 )
 
@@ -132,7 +142,11 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onConnectionModeChanged(value: TBoxConnectionMode) {
-        mutableUiState.value = mutableUiState.value.copy(connectionMode = value, formError = null)
+        mutableUiState.value = mutableUiState.value.copy(
+            connectionMode = value,
+            connectionModeEdited = true,
+            formError = null
+        )
     }
 
     /** @return true once the profile is saved and [HubUiState.formError] is clear. */
@@ -145,8 +159,19 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             return false
         }
 
-        val profile = current.motorcycles.firstOrNull { it.ssid == normalizedSsid }
-            ?.copy(password = current.password, connectionMode = current.connectionMode)
+        val saved = current.motorcycles.firstOrNull { it.ssid == normalizedSsid }
+        val profile = saved
+            ?.copy(
+                password = current.password,
+                // Only when the rider said so. The form is reset to AUTO every time it opens, so
+                // re-saving a password on a motorcycle pinned to Wi-Fi Direct used to quietly put
+                // it back on the access-point road, and the reconnect that followed failed.
+                connectionMode = if (current.connectionModeEdited) {
+                    current.connectionMode
+                } else {
+                    saved.connectionMode
+                }
+            )
             ?: MotorcycleProfile(
                 ssid = normalizedSsid,
                 password = current.password,
@@ -164,11 +189,12 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
         mutableUiState.value = current.copy(
             motorcycles = current.motorcycles.replaceProfile(profile),
             session = current.session.withMotorcycle(profile),
+            connectionMode = profile.connectionMode,
             formError = null
         )
         ProjectionEventLog.record(
             "PAIRING",
-            "Manual motorcycle profile saved for SSID $normalizedSsid; mode=${current.connectionMode}; " +
+            "Manual motorcycle profile saved for SSID $normalizedSsid; mode=${profile.connectionMode}; " +
                 "passwordPresent=${current.password.isNotEmpty()}."
         )
         return true
@@ -181,6 +207,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             ssid = "",
             password = "",
             connectionMode = TBoxConnectionMode.AUTO,
+            connectionModeEdited = false,
             formError = null
         )
     }
@@ -191,8 +218,11 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             "Valid T-Box QR decoded: ssid=${payload.ssid}, modelId=${payload.modelId ?: "not provided"}, " +
                 "passwordPresent=${payload.password.isNotEmpty()}."
         )
-        val existing = mutableUiState.value.motorcycles.firstOrNull { it.ssid == payload.ssid }
+        val existing = mutableUiState.value.motorcycles.matching(payload)
         val profile = existing?.copy(
+            // The match may have come from the MAC rather than the name, so the saved name is
+            // the one that can be stale.
+            ssid = payload.ssid,
             password = payload.password,
             modelId = payload.modelId ?: existing.modelId,
             displayName = payload.displayName ?: existing.displayName,
@@ -246,6 +276,7 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             ssid = profile.ssid,
             password = profile.password,
             connectionMode = profile.connectionMode,
+            connectionModeEdited = false,
             formError = null
         )
         ProjectionEventLog.record("GARAGE", "Active motorcycle changed to ${profile.ssid}.")
@@ -340,8 +371,9 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
         // work does not survive the screen: see ConnectionProgressNotification.
         ConnectionProgressNotification.show(getApplication(), profile.ssid, searching = false)
         connectJob = viewModelScope.launch {
-            var establishedLink: io.motohub.android.tbox.TBoxLink? = null
+            var establishedLink: TBoxLink? = null
             var sessionInstalled = false
+            var tearDownLinkOnAbort = true
             try {
                 // The official CFMOTO app can keep its EasyConn/PXC service alive after logout
                 // and while it is only in the recent-apps list. Android 14+ offers no way to
@@ -403,14 +435,21 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
                 if (discoveryFailure != null) {
                     ProjectionEventLog.error("DISCOVERY", "EasyConn service discovery failed.", discoveryFailure)
                     transport.stop()
-                    establishedLink.disconnect()
-                    networkConnector.disconnect()
+                    establishedLink.releaseAfterFailedDiscovery()
+                    if (establishedLink is TBoxLink.WifiDirect) {
+                        // Leave the group up: the next Connect / auto-retry adopts it. Tearing
+                        // it down here forced a full P2P rejoin, which Xiaomi refuses on the
+                        // first attempt and which reset EasyConn on the dash.
+                        tearDownLinkOnAbort = false
+                    } else {
+                        networkConnector.disconnect()
+                    }
                     TBoxSessionRegistry.clear()
                     showError(motoHubText("T-Box not found: %1\$s", discoveryFailure.message.orEmpty()))
                     return@launch
                 }
                 val host = discovered.getOrThrow()
-                capabilityStore.recordDiscovery(profile, host)
+                capabilityStore.recordDiscovery(profile, host, establishedLink.transport)
                 ProjectionEventLog.record(
                     "DISCOVERY",
                     "EasyConn service found at ${host.ipAddress}:${host.port}; package=${host.packageName}."
@@ -430,7 +469,8 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 // Cancellation after a P2P join but before registry installation otherwise leaves
                 // the group alive because it has no ConnectivityManager callback to release it.
-                if (!sessionInstalled) establishedLink?.disconnect()
+                // Discovery failure on Wi-Fi Direct already detached without removeGroup.
+                if (!sessionInstalled && tearDownLinkOnAbort) establishedLink?.disconnect()
                 connectJob = null
                 ConnectionProgressNotification.clear(getApplication())
                 ProjectionEventLog.debug("CONNECTION", "Connection coroutine completed.")
@@ -521,11 +561,28 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
         showError(message)
     }
 
+    /**
+     * A dismissed screen only ends the session when nothing is using it.
+     *
+     * [isNativeStreamActive] covers this process's own modes, but not a companion app driving the
+     * session over the IPC bridge: that claim lives in the registry, and the unconditional
+     * `clear()` this used to do took the link out from under it - including a Wi-Fi Direct group,
+     * which a backgrounded process is then not allowed to form again.
+     */
     override fun onCleared() {
         ProjectionEventLog.debug("STATE", "HubViewModel cleared.")
-        if (!isNativeStreamActive()) {
-            networkConnector.disconnect()
-            TBoxSessionRegistry.clear()
+        val heldBy = TBoxSessionRegistry.activeConsumers()
+        when {
+            isNativeStreamActive() -> Unit
+            heldBy.isNotEmpty() -> ProjectionEventLog.record(
+                "SESSION",
+                "MOTO-HUB's screen closed while the T-Box session is still used by $heldBy; " +
+                    "leaving the link up."
+            )
+            else -> {
+                networkConnector.disconnect()
+                TBoxSessionRegistry.clear()
+            }
         }
         super.onCleared()
     }
@@ -547,6 +604,9 @@ class HubViewModel(application: Application) : AndroidViewModel(application) {
             ssid = profile?.ssid.orEmpty(),
             password = profile?.password.orEmpty(),
             connectionMode = TBoxConnectionMode.PHONE_HOTSPOT,
+            // The rider is opening the form precisely to change the transport, so the save that
+            // follows must write it even though they never touched the picker themselves.
+            connectionModeEdited = true,
             formError = null
         )
     }

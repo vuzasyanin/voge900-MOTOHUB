@@ -13,6 +13,7 @@ import io.motohub.android.tbox.FormedP2pGroup
 import io.motohub.android.tbox.ProfileOverride
 import io.motohub.android.tbox.SelectingTBoxTransport
 import io.motohub.android.tbox.TBoxCapabilityStore
+import io.motohub.android.tbox.TBoxLink
 import io.motohub.android.tbox.TBoxLinkResolver
 import io.motohub.android.tbox.TBoxModelProfile
 import io.motohub.android.tbox.TBoxNetworkConnector
@@ -83,12 +84,14 @@ class CoreTBoxConnector(private val context: Context) {
         val host = discovered.getOrElse {
             ProjectionEventLog.error("IPC_TBOX", "AIDL connect: EasyConn discovery failed.", it)
             transport.stop()
-            link.disconnect()
-            networkConnector.disconnect()
+            link.releaseAfterFailedDiscovery()
+            if (link !is TBoxLink.WifiDirect) {
+                networkConnector.disconnect()
+            }
             TBoxSessionRegistry.clear()
             return false
         }
-        capabilityStore.recordDiscovery(profile, host)
+        capabilityStore.recordDiscovery(profile, host, link.transport)
         TBoxSessionRegistry.install(
             TBoxSessionHandle(transport, host, networkConnector, profile, link)
         )

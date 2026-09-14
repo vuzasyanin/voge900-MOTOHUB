@@ -1,5 +1,6 @@
 package io.motohub.android.feature.pairing
 
+import io.motohub.android.session.MotorcycleProfile
 import io.motohub.android.session.TBoxConnectionMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -218,7 +219,7 @@ class TBoxQrParserTest {
                 "&bm=DD%3A0D%3A30%3A24%3A87%3A6D"
         ).getOrThrow()
 
-        assertEquals("PHONE-HOTSPOT-876a6d", payload.ssid)
+        assertEquals("PHONE-HOTSPOT-24876d", payload.ssid)
         assertEquals("", payload.password)
         assertEquals("21322", payload.modelId)
         assertEquals(TBoxQrOrigin.RECOGNISED, payload.origin)
@@ -229,14 +230,53 @@ class TBoxQrParserTest {
     fun parsesCarbitTokenQr() {
         val payload = TBoxQrParser.parse("CARBITDC0D3024876D").getOrThrow()
 
-        assertEquals("PHONE-HOTSPOT-24876D", payload.ssid)
+        assertEquals("PHONE-HOTSPOT-24876d", payload.ssid)
+        assertEquals("dc:0d:30:24:87:6d", payload.deviceMac)
         assertEquals("", payload.password)
         assertEquals(TBoxQrOrigin.RECOGNISED, payload.origin)
         assertEquals(TBoxConnectionMode.PHONE_HOTSPOT, payload.suggestedConnectionMode)
     }
 
     @Test
-    fun suggestsWifiDirectForP2pOnlyQr() {
+    fun rescanningTheOtherCodeOfAHostedDashUpdatesItInsteadOfAddingASecond() {
+        // The same dash prints both codes. They used to disagree on the case of the invented
+        // SSID, which was the only thing pairing matched on, so the garage grew a duplicate.
+        val fromToken = TBoxQrParser.parse("CARBITDC0D3024876D").getOrThrow()
+        val fromUrl = TBoxQrParser.parse(
+            "http://www.carbit.com.cn/down6/645/644/_ylqxos?modelid=21322&sn=t6J4&action=128" +
+                "&bm=DC%3A0D%3A30%3A24%3A87%3A6D"
+        ).getOrThrow()
+        val saved = MotorcycleProfile(ssid = fromToken.ssid, password = "")
+
+        assertEquals(saved, listOf(saved).matching(fromUrl))
+        assertEquals(saved, listOf(saved).matching(fromToken))
+    }
+
+    @Test
+    fun aDifferentDashIsNotMatchedOntoASavedOne() {
+        val saved = MotorcycleProfile(ssid = "PHONE-HOTSPOT-24876d", password = "", modelId = "21322")
+        val otherModelSameMacSuffix = TBoxQrParser.parse(
+            "http://www.carbit.com.cn/down6/645/644/_ylqxos?modelid=99999&action=128" +
+                "&bm=AA%3ABB%3ACC%3A24%3A87%3A6D"
+        ).getOrThrow()
+
+        assertNull(listOf(saved).matching(otherModelSameMacSuffix))
+    }
+
+    @Test
+    fun anOrdinaryAccessPointStillMatchesByNetworkName() {
+        val saved = MotorcycleProfile(ssid = "VOGE-5G-58e4", password = "old")
+        val payload = TBoxQrParser.parse(
+            "https://setup.carbit.com/connect?ssid=VOGE-5G-58e4&pwd=new&auth=wpa2-psk"
+        ).getOrThrow()
+
+        assertEquals(saved, listOf(saved).matching(payload))
+    }
+
+    @Test
+    fun doesNotLockWifiDirectForAP2pDeviceNameQr() {
+        // action=8 without SoftAP bits used to persist WIFI_DIRECT even when the SSID was the
+        // dash's P2P device name, not a DIRECT- group. AUTO now infers that transport.
         val payload = TBoxQrParser.parse(
             "http://www.carbit.com.cn/down6/645/644/_ylqxos?modelid=34808&action=8" +
                 "&ssid=ZT5Gcf3b&pwd=secret&auth=WPA2&mac=34%3A28%3A4a%3A04%3Acf%3A3b&name=ZT5Gcf3b"
@@ -244,6 +284,29 @@ class TBoxQrParserTest {
 
         assertEquals("ZT5Gcf3b", payload.ssid)
         assertEquals("secret", payload.password)
+        assertNull(payload.suggestedConnectionMode)
+    }
+
+    @Test
+    fun doesNotLockWifiDirectForAVogeP2pDeviceNameQr() {
+        val payload = TBoxQrParser.parse(
+            "http://www.carbit.com.cn/down6/645/644/_ylqxos?modelid=37501&action=8" +
+                "&ssid=VOGE-5G-b780&pwd=secret&auth=WPA2&name=VOGE-5G-b780"
+        ).getOrThrow()
+
+        assertEquals("VOGE-5G-b780", payload.ssid)
+        assertEquals("37501", payload.modelId)
+        assertNull(payload.suggestedConnectionMode)
+    }
+
+    @Test
+    fun suggestsWifiDirectOnlyForADirectGroupQr() {
+        val payload = TBoxQrParser.parse(
+            "http://www.carbit.com.cn/down6/645/644/_ylqxos?modelid=34808&action=8" +
+                "&ssid=DIRECT-go-ZT5Gcf3b&pwd=secret&auth=WPA2&name=ZT5Gcf3b"
+        ).getOrThrow()
+
+        assertEquals("DIRECT-go-ZT5Gcf3b", payload.ssid)
         assertEquals(TBoxConnectionMode.WIFI_DIRECT, payload.suggestedConnectionMode)
     }
 }

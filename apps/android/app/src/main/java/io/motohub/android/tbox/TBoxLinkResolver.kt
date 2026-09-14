@@ -41,18 +41,10 @@ object TBoxLinkResolver {
             hostedLink(context).recoverCatching { hostedFailure ->
                 accessPointFallback(networkConnector, profile, hostedFailure).getOrThrow()
             }
-        } else if (usesWifiDirect(profile)) {
-            ProjectionEventLog.record(
-                "NETWORK",
-                "Connecting to ${profile.ssid} through Wi-Fi Direct (${profile.connectionMode})" +
-                    if (formedGroup != null) ", adopting the group the companion app formed." else "."
-            )
-            if (formedGroup != null) {
-                TBoxWifiDirectConnector(context)
-                    .adoptFormedGroup(profile, formedGroup.localIpv4, formedGroup.groupOwnerIpv4)
-                    .map { it }
-            } else {
-                TBoxWifiDirectConnector(context).connect(profile).map { it }
+        } else if (usesWifiDirect(profile, learnedTransport(context, profile))) {
+            wifiDirectLink(context, profile, formedGroup).recoverCatching { p2pFailure ->
+                if (profile.connectionMode != TBoxConnectionMode.AUTO) throw p2pFailure
+                accessPointFallback(networkConnector, profile, p2pFailure).getOrThrow()
             }
         } else {
             ProjectionEventLog.record(
@@ -60,6 +52,10 @@ object TBoxLinkResolver {
                 "Connecting to ${profile.ssid} through the Wi-Fi access-point transport (${profile.connectionMode})."
             )
             networkConnector.connect(profile).map { TBoxLink.Infrastructure(it) }
+                .recoverCatching { apFailure ->
+                    if (profile.connectionMode != TBoxConnectionMode.AUTO) throw apFailure
+                    wifiDirectFallback(context, networkConnector, profile, apFailure).getOrThrow()
+                }
         }
 
     /**
@@ -77,7 +73,7 @@ object TBoxLinkResolver {
         awaitNetworkMillis: Long,
         currentLink: TBoxLink? = null
     ): TBoxLink {
-        if (usesWifiDirect(profile)) {
+        if (usesWifiDirect(profile, learnedTransport(context, profile))) {
             val handedOver = (currentLink as? TBoxLink.WifiDirect)?.takeIf { it.formedElsewhere }
             if (handedOver != null) {
                 return TBoxWifiDirectConnector(context)
@@ -85,7 +81,7 @@ object TBoxLinkResolver {
                     .getOrThrow()
             }
             // A P2P group has no ConnectivityManager-visible network to await; rejoin directly.
-            return TBoxWifiDirectConnector(context).connect(profile).getOrThrow()
+            return TBoxWifiDirectConnector(context).connect(profile, reacquire = true).getOrThrow()
         }
         val network = networkConnector.currentNetwork()
             ?: networkConnector.awaitNetworkAvailable(awaitNetworkMillis)
@@ -99,15 +95,74 @@ object TBoxLinkResolver {
      * connect to CORE (Android only grants a P2P join to a caller with a visible activity), while
      * the access-point join still happens inside CORE. The two paths also differ in their
      * permission gate, so PRO has to know which one it is about to trigger.
+     *
+     * @param learned the transport that last carried a completed discovery for this dash, when
+     *   one has been observed. In AUTO it outranks the heuristics below, which can only guess
+     *   from an SSID shape and a provisioning id: a dash that has actually answered has already
+     *   settled the question, and re-guessing it costs the rider a failed join and a fallback on
+     *   every reconnect. Pure and explicit so the decision stays testable - [connect] and
+     *   [reacquire] read the snapshot themselves.
      */
-    fun usesWifiDirect(profile: MotorcycleProfile): Boolean = when (profile.connectionMode) {
+    fun usesWifiDirect(
+        profile: MotorcycleProfile,
+        learned: TBoxConnectionMode? = null
+    ): Boolean = when (profile.connectionMode) {
         TBoxConnectionMode.WIFI_DIRECT -> true
         // THINKERRIDE inverts the TCP roles, but the Wi-Fi join itself is a plain access-point
         // request — the dash's AP is ordinary WPA2, so it rides the infrastructure path here.
         TBoxConnectionMode.ACCESS_POINT,
         TBoxConnectionMode.PHONE_HOTSPOT,
         TBoxConnectionMode.THINKERRIDE -> false
-        TBoxConnectionMode.AUTO -> TBoxWifiDirectConnector.isWifiDirectSsid(profile.ssid)
+        TBoxConnectionMode.AUTO -> when (learned) {
+            TBoxConnectionMode.WIFI_DIRECT -> true
+            TBoxConnectionMode.ACCESS_POINT -> false
+            // PHONE_HOTSPOT is not reachable from AUTO at all, and the rest carry no answer.
+            else -> TBoxWifiDirectConnector.prefersWifiDirectInAuto(profile)
+        }
+    }
+
+    private fun learnedTransport(context: Context, profile: MotorcycleProfile): TBoxConnectionMode? =
+        TBoxCapabilityStore(context).load(profile)?.lastSuccessfulTransport
+
+    private suspend fun wifiDirectLink(
+        context: Context,
+        profile: MotorcycleProfile,
+        formedGroup: FormedP2pGroup?
+    ): Result<TBoxLink> {
+        ProjectionEventLog.record(
+            "NETWORK",
+            "Connecting to ${profile.ssid} through Wi-Fi Direct (${profile.connectionMode})" +
+                if (formedGroup != null) ", adopting the group the companion app formed." else "."
+        )
+        return if (formedGroup != null) {
+            TBoxWifiDirectConnector(context)
+                .adoptFormedGroup(profile, formedGroup.localIpv4, formedGroup.groupOwnerIpv4)
+                .map { it }
+        } else {
+            TBoxWifiDirectConnector(context).connect(profile).map { it }
+        }
+    }
+
+    /**
+     * AUTO tried the access point and it was not on the air. The saved SSID may be a P2P
+     * device name (VOGE-5G-…, Zontes action=8) rather than a SoftAP, so one P2P join is the
+     * other road — the same shape as [accessPointFallback], inverted.
+     *
+     * Only when the scan did *not* see the dash. A visible AP that failed to associate is a
+     * password / radio problem; jumping to P2P would hide that.
+     */
+    private suspend fun wifiDirectFallback(
+        context: Context,
+        networkConnector: TBoxNetworkConnector,
+        profile: MotorcycleProfile,
+        apFailure: Throwable
+    ): Result<TBoxLink> {
+        if (networkConnector.isDashBroadcasting(profile) == true) return Result.failure(apFailure)
+        ProjectionEventLog.record(
+            "NETWORK",
+            "${profile.ssid} is not broadcasting as an access point - trying Wi-Fi Direct."
+        )
+        return TBoxWifiDirectConnector(context).connect(profile).map { it }
     }
 
     /**

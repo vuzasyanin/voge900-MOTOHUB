@@ -1,5 +1,6 @@
 package io.motohub.android.tbox
 
+import io.motohub.android.session.MotorcycleProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -122,6 +123,40 @@ class TBoxWifiDirectConnectorTest {
     }
 
     @Test
+    fun `AUTO prefers P2P for VOGE device names and SSDQ model ids`() {
+        assertTrue(
+            TBoxWifiDirectConnector.prefersWifiDirectInAuto(
+                MotorcycleProfile(ssid = "VOGE-5G-b780", password = "x")
+            )
+        )
+        assertTrue(
+            TBoxWifiDirectConnector.prefersWifiDirectInAuto(
+                MotorcycleProfile(ssid = "voge-5g-dd7e", password = "x")
+            )
+        )
+        assertTrue(
+            TBoxWifiDirectConnector.prefersWifiDirectInAuto(
+                MotorcycleProfile(ssid = "EASYCONN_5G-F3116E", password = "x", modelId = "37501")
+            )
+        )
+        assertTrue(
+            TBoxWifiDirectConnector.prefersWifiDirectInAuto(
+                MotorcycleProfile(ssid = "DIRECT-go-CFMOTO-EF7198", password = "x")
+            )
+        )
+        assertFalse(
+            TBoxWifiDirectConnector.prefersWifiDirectInAuto(
+                MotorcycleProfile(ssid = "EASYCONN_5G-F3116E", password = "x")
+            )
+        )
+        assertFalse(
+            TBoxWifiDirectConnector.prefersWifiDirectInAuto(
+                MotorcycleProfile(ssid = "ZT5Gcf3b", password = "x")
+            )
+        )
+    }
+
+    @Test
     fun `retries a refused join for as long as the budget can hold another round`() {
         val budget = 35_000L
         assertTrue(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(2_500L, budget))
@@ -136,6 +171,24 @@ class TBoxWifiDirectConnectorTest {
         assertFalse(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(26_001L, budget))
         assertFalse(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(34_000L, budget))
         assertFalse(TBoxWifiDirectConnector.shouldSettleAndRetryJoin(60_000L, budget))
+    }
+
+    @Test
+    fun `only a recovery attempt with no sign of the dash gets the shortened wait`() {
+        val full = TBoxWifiDirectConnector.groupFormTimeoutMillis(reacquire = false, dashSeen = false)
+        val shortened = TBoxWifiDirectConnector.groupFormTimeoutMillis(reacquire = true, dashSeen = false)
+
+        assertTrue(shortened < full)
+        // A rider asking for the connection always gets the full budget - the dash may be booting.
+        assertEquals(
+            full,
+            TBoxWifiDirectConnector.groupFormTimeoutMillis(reacquire = false, dashSeen = true)
+        )
+        // And so does a recovery aimed at a dash that answered discovery or is already in a group.
+        assertEquals(
+            full,
+            TBoxWifiDirectConnector.groupFormTimeoutMillis(reacquire = true, dashSeen = true)
+        )
     }
 
     @Test

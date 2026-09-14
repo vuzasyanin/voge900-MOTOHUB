@@ -56,7 +56,16 @@ class TBoxWifiDirectConnector(
     /** True when the profile's SSID is a Wi-Fi Direct group name. */
     fun isWifiDirectProfile(profile: MotorcycleProfile): Boolean = isWifiDirectSsid(profile.ssid)
 
-    suspend fun connect(profile: MotorcycleProfile): Result<TBoxLink.WifiDirect> =
+    /**
+     * @param reacquire true when this join is one attempt of a recovery loop rather than a rider
+     *   asking for a connection. Recovery keeps re-asking on its own schedule and usually runs
+     *   against a dash that is simply switched off, so an attempt that is clearly going nowhere
+     *   is worth abandoning early - see [awaitGroup].
+     */
+    suspend fun connect(
+        profile: MotorcycleProfile,
+        reacquire: Boolean = false
+    ): Result<TBoxLink.WifiDirect> =
         withContext(Dispatchers.IO) {
             // Before the framework, not after: a process without NEARBY_WIFI_DEVICES gets the same
             // bare "internal error" from discoverPeers() and connect() that a wedged P2P stack
@@ -99,7 +108,7 @@ class TBoxWifiDirectConnector(
                     } else {
                         join(manager, channel, profile, outcome, footprint)
                     }
-                    outcome.await()
+                    awaitGroup(outcome, footprint, profile, reacquire)
                 }.getOrThrow()
                 handedOff = true
                 Result.success(link)
@@ -133,6 +142,45 @@ class TBoxWifiDirectConnector(
                 }
             }
         }
+
+    /**
+     * Waits for the group to form, cutting the wait short on a recovery attempt that has no
+     * sign of the dash.
+     *
+     * `connect()` is accepted by the framework whether or not there is anything to connect to,
+     * so a join aimed at a dash whose ignition is off spends the entire [CONNECT_TIMEOUT_MS]
+     * waiting for a group that cannot form. That is fine when a rider asked for it - the dash may
+     * be booting - but during recovery it is 35s of a budget that could have held three more
+     * attempts, and the rider who walked off to refuel needs the attempt that lands the moment
+     * the bike comes back, not a longer one before it.
+     *
+     * The cut only applies when the dash was neither already in a group nor seen in discovery.
+     * A dash that answered discovery is genuinely mid-negotiation and keeps the full budget, and
+     * so does the credentials join for dashes that never show up as peers - those get the shorter
+     * [ABSENT_DASH_FORM_TIMEOUT_MS], which is still ample for a group that has a peer to form
+     * with, rather than being refused outright.
+     */
+    private suspend fun awaitGroup(
+        outcome: CompletableDeferred<Result<TBoxLink.WifiDirect>>,
+        footprint: P2pJoinFootprint,
+        profile: MotorcycleProfile,
+        reacquire: Boolean
+    ): Result<TBoxLink.WifiDirect> {
+        val budget = groupFormTimeoutMillis(
+            reacquire = reacquire,
+            dashSeen = footprint.adoptedExistingGroup || footprint.peerSeen
+        )
+        // At the full budget the enclosing withTimeout started strictly earlier and always wins,
+        // so the failure below belongs to the shortened recovery wait alone.
+        return withTimeoutOrNull(budget) { outcome.await() }
+            ?: Result.failure(
+                IllegalStateException(
+                    "No Wi-Fi Direct group formed for ${profile.ssid} within " +
+                        "${budget / 1_000}s and the dash never answered discovery; it is most " +
+                        "likely switched off. Retrying."
+                )
+            )
+    }
 
     /**
      * Takes over a group the COMPANION APP formed, using the addresses it resolved there.
@@ -1025,6 +1073,13 @@ class TBoxWifiDirectConnector(
          * group was still negotiating on the riders who reported the failure.
          */
         private const val CONNECT_TIMEOUT_MS = 35_000L
+        /**
+         * How long a recovery attempt waits for a group when nothing suggests the dash is there.
+         * Long enough for a group that has a peer to negotiate - field logs put that at a few
+         * seconds - and short enough that a parked bike is re-tried roughly every quarter minute
+         * instead of every 35s.
+         */
+        private const val ABSENT_DASH_FORM_TIMEOUT_MS = 12_000L
         private const val PEER_DISCOVERY_TIMEOUT_MS = 6_000L
         private const val PEER_POLL_INTERVAL_MS = 600L
         private const val FRAMEWORK_CALL_TIMEOUT_MS = 3_000L
@@ -1055,6 +1110,9 @@ class TBoxWifiDirectConnector(
         private const val ADOPT_VERIFY_POLL_MS = 300L
         private const val GROUP_OWNER_IP = "192.168.49.1"
         private const val DIRECT_PREFIX = "DIRECT-"
+        private const val VOGE_P2P_PEER_PREFIX = "VOGE-5G-"
+        /** SSDQ01-0120 / Carbit channel 37501: P2P device name, SoftAP only while pairing. */
+        private const val VOGE_SSDQ_MODEL_ID = "37501"
 
         /**
          * Whether a join round that was refused outright should be retried after a settle,
@@ -1071,9 +1129,39 @@ class TBoxWifiDirectConnector(
             roundCostMillis: Long = WEDGE_ROUND_COST_MS
         ): Boolean = elapsedMillis + settleMillis + roundCostMillis <= budgetMillis
 
+        /**
+         * How long to wait for the group to form once the join has been handed to the framework.
+         *
+         * [reacquire] is a recovery attempt rather than a rider's request, and [dashSeen] says
+         * whether anything at all suggested the dash is present - an existing group, or an answer
+         * to peer discovery. A recovery attempt with neither is almost always aimed at a bike
+         * whose ignition is off, and `connect()` is accepted regardless, so the full budget would
+         * be spent waiting on a group that cannot form. Shortening only that case leaves room in
+         * a recovery window for the attempt that lands the moment the bike comes back.
+         */
+        internal fun groupFormTimeoutMillis(reacquire: Boolean, dashSeen: Boolean): Long =
+            if (reacquire && !dashSeen) ABSENT_DASH_FORM_TIMEOUT_MS else CONNECT_TIMEOUT_MS
+
         /** Wi-Fi Direct group names always start with "DIRECT-" (Android convention). */
         fun isWifiDirectSsid(ssid: String): Boolean =
             ssid.trim().removeSurrounding("\"").startsWith(DIRECT_PREFIX, ignoreCase = true)
+
+        /**
+         * Whether AUTO should join through P2P rather than a SoftAP request.
+         *
+         * `DIRECT-…` is a group name. `VOGE-5G-…` is not: it is the dash's P2P *device* name,
+         * the string Android's own Wi-Fi Direct screen lists. Treating it as an access point
+         * made the first pairing work (the SoftAP is up on the QR page) and every later
+         * reconnect fail, because after the first client those dashes drop the AP and only
+         * the P2P peer remains. modelId `37501` is the SSDQ01-0120 family that does this
+         * (field logs 2026-09-13/14, VOGE-5G-b780 / dd7e).
+         */
+        fun prefersWifiDirectInAuto(profile: MotorcycleProfile): Boolean {
+            if (isWifiDirectSsid(profile.ssid)) return true
+            val ssid = profile.ssid.trim().removeSurrounding("\"")
+            if (ssid.startsWith(VOGE_P2P_PEER_PREFIX, ignoreCase = true)) return true
+            return profile.modelId?.trim() == VOGE_SSDQ_MODEL_ID
+        }
 
         /**
          * Recovers the dash's P2P device name from a group SSID. Android names a group

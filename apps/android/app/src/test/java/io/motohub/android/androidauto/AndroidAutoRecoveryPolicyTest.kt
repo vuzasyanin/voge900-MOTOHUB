@@ -45,10 +45,10 @@ class AndroidAutoRecoveryPolicyTest {
 
     @Test
     fun `EasyConn recovery waits while Wi-Fi is parked and gone`() {
-        assertTrue(shouldDeferEasyConnRecovery(wifiParked = true, networkAvailable = false))
-        assertFalse(shouldDeferEasyConnRecovery(wifiParked = true, networkAvailable = true))
-        assertFalse(shouldDeferEasyConnRecovery(wifiParked = false, networkAvailable = false))
-        assertFalse(shouldDeferEasyConnRecovery(wifiParked = false, networkAvailable = true))
+        assertTrue(shouldDeferEasyConnRecovery(parked = true, linkAvailable = false))
+        assertFalse(shouldDeferEasyConnRecovery(parked = true, linkAvailable = true))
+        assertFalse(shouldDeferEasyConnRecovery(parked = false, linkAvailable = false))
+        assertFalse(shouldDeferEasyConnRecovery(parked = false, linkAvailable = true))
     }
 
     @Test
@@ -101,24 +101,59 @@ class AndroidAutoRecoveryPolicyTest {
         assertTrue(
             isCleanDashProjectionLeave(
                 hasReachedStreaming = true,
-                wifiAvailable = true,
+                linkAvailable = true,
                 reasonLooksLikeLeave = true
             )
         )
         assertFalse(
             isCleanDashProjectionLeave(
                 hasReachedStreaming = true,
-                wifiAvailable = false,
+                linkAvailable = false,
                 reasonLooksLikeLeave = true
             )
         )
         assertFalse(
             isCleanDashProjectionLeave(
                 hasReachedStreaming = false,
-                wifiAvailable = true,
+                linkAvailable = true,
                 reasonLooksLikeLeave = true
             )
         )
+    }
+
+    @Test
+    fun `a socket the dash closed from its end is a page leave`() {
+        assertTrue(looksLikeDashProjectionLeave("T-Box error: 2 (read tcp: connection reset by peer)"))
+        assertTrue(looksLikeDashProjectionLeave("T-Box error: 2 (write tcp: broken pipe)"))
+        assertTrue(
+            looksLikeDashProjectionLeave("T-Box error: 2 (use of closed network connection)")
+        )
+        assertFalse(
+            looksLikeDashProjectionLeave("The Wi-Fi Direct group with the dash was lost.")
+        )
+        assertFalse(
+            looksLikeDashProjectionLeave("The T-Box no longer accepts Android Auto frames.")
+        )
+    }
+
+    @Test
+    fun `a live Wi-Fi Direct group counts as an available link without a Network`() {
+        // The service answers linkAvailable from its P2P group watcher rather than from
+        // ConnectivityManager, which never reports a Network for a Wi-Fi Direct group.
+        assertTrue(
+            isCleanDashProjectionLeave(
+                hasReachedStreaming = true,
+                linkAvailable = true,
+                reasonLooksLikeLeave = true
+            )
+        )
+        assertFalse(shouldDeferEasyConnRecovery(parked = false, linkAvailable = true))
+    }
+
+    @Test
+    fun `Wi-Fi Direct skips the dash-leave settle`() {
+        assertEquals(0L, dashLeaveSettleMillis(wifiDirect = true))
+        assertEquals(DASH_LEAVE_SETTLE_MS, dashLeaveSettleMillis(wifiDirect = false))
     }
 
     @Test
@@ -127,5 +162,19 @@ class AndroidAutoRecoveryPolicyTest {
         assertEquals(DASH_LEAVE_RECOVERY_GIVE_UP_MS, recoveryGiveUpMillis(dashProjectionLeave = true))
         assertTrue(DASH_LEAVE_RECOVERY_GIVE_UP_MS > STANDARD_RECOVERY_GIVE_UP_MS)
         assertTrue(DASH_LEAVE_SETTLE_MS < STANDARD_RECOVERY_GIVE_UP_MS)
+    }
+
+    @Test
+    fun `Wi-Fi Direct recovery gets the same budget as an infrastructure Wi-Fi park`() {
+        assertEquals(
+            WIFI_PARK_MILLIS,
+            recoveryGiveUpMillis(dashProjectionLeave = false, wifiDirect = true)
+        )
+        assertTrue(WIFI_PARK_MILLIS > STANDARD_RECOVERY_GIVE_UP_MS)
+        // A dash-page leave is already the longest budget, on either transport.
+        assertEquals(
+            DASH_LEAVE_RECOVERY_GIVE_UP_MS,
+            recoveryGiveUpMillis(dashProjectionLeave = true, wifiDirect = true)
+        )
     }
 }

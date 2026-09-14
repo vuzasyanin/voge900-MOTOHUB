@@ -33,13 +33,15 @@ class LocalTBoxSessionEstablisher(private val context: Context) : TBoxSessionEst
         val discovered = transport.discover(link, profile.modelId)
         val host = discovered.getOrElse {
             transport.stop()
-            link.disconnect()
-            networkConnector.disconnect()
+            link.releaseAfterFailedDiscovery()
+            if (link !is TBoxLink.WifiDirect) {
+                networkConnector.disconnect()
+            }
             TBoxSessionRegistry.clear()
             onDiscoveryError(it)
             return false
         }
-        capabilityStore.recordDiscovery(profile, host)
+        capabilityStore.recordDiscovery(profile, host, link.transport)
         TBoxSessionRegistry.install(
             TBoxSessionHandle(transport, host, networkConnector, profile, link)
         )

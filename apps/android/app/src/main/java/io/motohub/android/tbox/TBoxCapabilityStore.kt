@@ -2,6 +2,7 @@ package io.motohub.android.tbox
 
 import android.content.Context
 import io.motohub.android.session.MotorcycleProfile
+import io.motohub.android.session.TBoxConnectionMode
 import org.json.JSONObject
 
 data class TBoxCapabilitySnapshot(
@@ -10,7 +11,16 @@ data class TBoxCapabilitySnapshot(
     val host: TBoxHost? = null,
     val discoveredAtEpochMillis: Long? = null,
     val capabilities: TBoxCapabilities? = null,
-    val capabilitiesObservedAtEpochMillis: Long? = null
+    val capabilitiesObservedAtEpochMillis: Long? = null,
+    /**
+     * The transport that last carried a completed discovery for this dash.
+     *
+     * A learned fact about the dashboard, not a rider setting, which is why it lives here and not
+     * in `MotorcycleProfile`: it is written by whatever actually worked, never shown as a choice,
+     * and deleted along with the profile through [TBoxCapabilityStore.delete]. AUTO reads it
+     * ahead of its own heuristics - see [TBoxLinkResolver.usesWifiDirect].
+     */
+    val lastSuccessfulTransport: TBoxConnectionMode? = null
 )
 
 /** Persists only whitelisted, non-secret T-Box metadata for each motorcycle profile. */
@@ -20,22 +30,31 @@ class TBoxCapabilityStore(context: Context) {
         Context.MODE_PRIVATE
     )
 
+    /**
+     * @param transport the link discovery actually completed over, when the caller knows it.
+     *   Null leaves whatever was learned before standing, so a caller that cannot tell never
+     *   erases an answer a caller that could had already given.
+     */
     @Synchronized
     fun recordDiscovery(
         profile: MotorcycleProfile,
         host: TBoxHost,
+        transport: TBoxConnectionMode? = null,
         observedAtEpochMillis: Long = System.currentTimeMillis()
     ) {
+        val previous = load(profile)
         save(
-            load(profile)?.copy(
+            previous?.copy(
                 ssid = profile.ssid,
                 host = host,
-                discoveredAtEpochMillis = observedAtEpochMillis
+                discoveredAtEpochMillis = observedAtEpochMillis,
+                lastSuccessfulTransport = transport ?: previous.lastSuccessfulTransport
             ) ?: TBoxCapabilitySnapshot(
                 profileId = profile.id,
                 ssid = profile.ssid,
                 host = host,
-                discoveredAtEpochMillis = observedAtEpochMillis
+                discoveredAtEpochMillis = observedAtEpochMillis,
+                lastSuccessfulTransport = transport
             )
         )
     }
@@ -85,6 +104,7 @@ class TBoxCapabilityStore(context: Context) {
         putNullable("discoveredAt", snapshot.discoveredAtEpochMillis)
         snapshot.capabilities?.let { put("capabilities", encodeCapabilities(it)) }
         putNullable("capabilitiesObservedAt", snapshot.capabilitiesObservedAtEpochMillis)
+        putNullable("lastSuccessfulTransport", snapshot.lastSuccessfulTransport?.name)
     }
 
     private fun decode(json: JSONObject): TBoxCapabilitySnapshot = TBoxCapabilitySnapshot(
@@ -99,7 +119,9 @@ class TBoxCapabilityStore(context: Context) {
         },
         discoveredAtEpochMillis = json.optionalLong("discoveredAt"),
         capabilities = json.optJSONObject("capabilities")?.let(::decodeCapabilities),
-        capabilitiesObservedAtEpochMillis = json.optionalLong("capabilitiesObservedAt")
+        capabilitiesObservedAtEpochMillis = json.optionalLong("capabilitiesObservedAt"),
+        lastSuccessfulTransport = json.optionalString("lastSuccessfulTransport")
+            ?.let { name -> TBoxConnectionMode.entries.firstOrNull { it.name == name } }
     )
 
     private fun encodeCapabilities(value: TBoxCapabilities): JSONObject = JSONObject().apply {
@@ -131,6 +153,7 @@ class TBoxCapabilityStore(context: Context) {
         putNullable("syncCorrectTime", value.syncCorrectTime)
         putNullable("bluetoothCall", value.bluetoothCall)
         putNullable("bluetoothSettings", value.bluetoothSettings)
+        putNullable("currentHuTimeMillis", value.currentHuTimeMillis)
     }
 
     private fun decodeCapabilities(json: JSONObject) = TBoxCapabilities(
@@ -161,7 +184,8 @@ class TBoxCapabilityStore(context: Context) {
         phoneSignal = json.optionalBoolean("phoneSignal"),
         syncCorrectTime = json.optionalBoolean("syncCorrectTime"),
         bluetoothCall = json.optionalBoolean("bluetoothCall"),
-        bluetoothSettings = json.optionalBoolean("bluetoothSettings")
+        bluetoothSettings = json.optionalBoolean("bluetoothSettings"),
+        currentHuTimeMillis = json.optionalLong("currentHuTimeMillis")
     )
 
     private fun key(profileId: String) = "profile:$profileId"

@@ -114,7 +114,13 @@ object TBoxSessionRegistry {
             )
             return false
         }
-        clear(handle)
+        // Mode stop is not a rider Disconnect: the next Connect (auto-reconnect after AA,
+        // another mode, the rider tapping Connect) has to adopt a still-formed P2P group.
+        // removeGroup here was the reconnect storm - Xiaomi then refuses the first rejoin
+        // (VOGE-5G-b780, 2026-09-14 11:44). Explicit disconnect still calls clear() without
+        // keepLink and tears the radio down.
+        val keepLink = activeHandle?.link is TBoxLink.WifiDirect
+        clear(handle, keepLink = keepLink)
         return true
     }
 

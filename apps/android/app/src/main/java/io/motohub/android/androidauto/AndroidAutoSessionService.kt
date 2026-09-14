@@ -80,6 +80,12 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
      * come back. EasyConn recovery and an unexpected AAP drop must not tear that down.
      */
     private val wifiParked = AtomicBoolean(false)
+    /**
+     * Set by the Wi-Fi Direct group watcher installed in [observeActiveSession]. It is the only
+     * liveness signal a P2P link has: ConnectivityManager never hands out a Network for one.
+     * Written from a broadcast receiver, read from the recovery coroutines.
+     */
+    @Volatile private var p2pGroupLost = false
     private var wakeLock: PowerManager.WakeLock? = null
     private val streamingLocks = TBoxStreamingLocks(this, "Android Auto")
     private var mediaButtonBridge: MediaButtonBridge? = null
@@ -731,7 +737,9 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
         // above never fires for it. Watch the P2P broadcasts instead: recovery can then start
         // the moment the group dissolves rather than after a 10s video-watchdog stall.
         p2pGroupWatcher?.close()
-        p2pGroupWatcher = (handle.link as? io.motohub.android.tbox.TBoxLink.WifiDirect)?.watchGroupLost {
+        p2pGroupLost = false
+        p2pGroupWatcher = (handle.link as? TBoxLink.WifiDirect)?.watchGroupLost {
+            p2pGroupLost = true
             if (!stopping) {
                 serviceScope.launch {
                     handleRecoverableFailure("The Wi-Fi Direct group with the dash was lost.")
@@ -739,6 +747,28 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
             }
         }
     }
+
+    /**
+     * Whether the radio link to the dash is still up, asked of the transport actually in use.
+     *
+     * Only [TBoxLink.Infrastructure] can answer through ConnectivityManager. A Wi-Fi Direct group
+     * never gets a Network object, so it answers from the group watcher above; a phone hotspot has
+     * no signal at all because the dash is the client there, so it is treated as live and its
+     * failures surface as discovery timeouts instead.
+     *
+     * Every caller here used to ask `currentNetwork() != null` directly, which answered "link is
+     * gone" for every healthy P2P session and pushed each of them down the slowest recovery path.
+     */
+    private fun linkStillUp(): Boolean {
+        val handle = tBoxHandle ?: return false
+        return when (handle.link) {
+            is TBoxLink.WifiDirect -> !p2pGroupLost
+            is TBoxLink.PhoneHotspot -> true
+            is TBoxLink.Infrastructure -> handle.networkConnector.currentNetwork() != null
+        }
+    }
+
+    private fun onWifiDirect(): Boolean = tBoxHandle?.link is TBoxLink.WifiDirect
 
     private fun handleTBoxNetworkLost(handle: TBoxSessionHandle) {
         if (!shouldAutoRecoverAndroidAuto(
@@ -869,8 +899,8 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
             fail(message)
             return
         }
-        val networkAvailable = tBoxHandle?.networkConnector?.currentNetwork() != null
-        if (shouldDeferEasyConnRecovery(wifiParked.get(), networkAvailable)) {
+        val linkAvailable = linkStillUp()
+        if (shouldDeferEasyConnRecovery(wifiParked.get(), linkAvailable)) {
             ProjectionEventLog.debug(
                 "WATCHDOG",
                 "Deferring EasyConn recovery until T-Box Wi-Fi returns: $message"
@@ -879,7 +909,7 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
         }
         if (isCleanDashProjectionLeave(
                 hasReachedStreaming = hasReachedStreaming,
-                wifiAvailable = networkAvailable,
+                linkAvailable = linkAvailable,
                 reasonLooksLikeLeave = looksLikeDashProjectionLeave(message)
             )
         ) {
@@ -891,7 +921,7 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
 
     /**
      * Back on the dash closes EasyConn while the AP is often still up. Hold Android
-     * Auto, detach the dead TFT encoder, wait [DASH_LEAVE_SETTLE_MS] so an imminent
+     * Auto, detach the dead TFT encoder, wait out [dashLeaveSettleMillis] so an imminent
      * AP bounce becomes Wi-Fi park, then poll EasyConn with the longer dash-return budget.
      */
     private fun parkForDashReturn(reason: String) {
@@ -905,28 +935,32 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
         AndroidAutoRuntime.publish(AndroidAutoRuntimeState.ReceiverReady)
         AndroidAutoRuntime.publishStartupDetail("Waiting for the dash to return…")
         ProjectionRuntime.publish(ProjectionRuntimeState.Starting)
+        val settleMillis = dashLeaveSettleMillis(wifiDirect = onWifiDirect())
         ProjectionEventLog.warning(
             "WATCHDOG",
-            "Dash left the projection page; holding Android Auto for " +
-                "${DASH_LEAVE_SETTLE_MS / 1_000L}s before EasyConn resume: $reason"
+            if (settleMillis > 0L) {
+                "Dash left the projection page; holding Android Auto for " +
+                    "${settleMillis / 1_000L}s before EasyConn resume: $reason"
+            } else {
+                "Dash left the projection page; resuming EasyConn over the live " +
+                    "Wi-Fi Direct group straight away: $reason"
+            }
         )
         recoveryJob = serviceScope.launch {
             try {
-                val settleDeadline = SystemClock.elapsedRealtime() + DASH_LEAVE_SETTLE_MS
+                val settleDeadline = SystemClock.elapsedRealtime() + settleMillis
                 while (!stopping && SystemClock.elapsedRealtime() < settleDeadline) {
-                    val networkAvailable = tBoxHandle?.networkConnector?.currentNetwork() != null
-                    if (shouldDeferEasyConnRecovery(wifiParked.get(), networkAvailable)) {
+                    if (shouldDeferEasyConnRecovery(wifiParked.get(), linkStillUp())) {
                         ProjectionEventLog.debug(
                             "WATCHDOG",
                             "Dash-leave settle ended: T-Box Wi-Fi is parked."
                         )
                         return@launch
                     }
-                    delay(500L)
+                    delay(SETTLE_POLL_MS)
                 }
                 if (stopping) return@launch
-                val networkAvailable = tBoxHandle?.networkConnector?.currentNetwork() != null
-                if (shouldDeferEasyConnRecovery(wifiParked.get(), networkAvailable)) return@launch
+                if (shouldDeferEasyConnRecovery(wifiParked.get(), linkStillUp())) return@launch
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } finally {
@@ -952,11 +986,13 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
      */
     private fun requestTBoxRecovery(
         reason: String,
-        giveUpMillis: Long = recoveryGiveUpMillis(dashProjectionLeave = false),
+        giveUpMillis: Long = recoveryGiveUpMillis(
+            dashProjectionLeave = false,
+            wifiDirect = onWifiDirect()
+        ),
         dashReturn: Boolean = false
     ) {
-        val networkAvailable = tBoxHandle?.networkConnector?.currentNetwork() != null
-        if (shouldDeferEasyConnRecovery(wifiParked.get(), networkAvailable)) {
+        if (shouldDeferEasyConnRecovery(wifiParked.get(), linkStillUp())) {
             ProjectionEventLog.debug(
                 "WATCHDOG",
                 "Deferring EasyConn recovery until T-Box Wi-Fi returns: $reason"
@@ -1086,7 +1122,7 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
         )
         tBoxHandle = recoveredHandle
         TBoxSessionRegistry.install(recoveredHandle)
-        capabilityStore.recordDiscovery(previousHandle.motorcycle, host)
+        capabilityStore.recordDiscovery(previousHandle.motorcycle, host, link.transport)
         observeActiveSession(recoveredHandle)
         startBikeStream(recoveredHandle)
         check(AndroidAutoRuntime.state.value is AndroidAutoRuntimeState.Streaming) {
@@ -1305,15 +1341,8 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
         private const val FRAME_LOG_INTERVAL = 300L
         private const val WATCHDOG_TICK_MS = 5_000L
         private const val WATCHDOG_STALL_MS = 10_000L
-        /**
-         * How long seamless resume keeps this foreground service up after the T-Box AP vanishes.
-         * Matches [io.motohub.android.tbox.TBoxNetworkConnector]'s rejoin give-up so the
-         * specifier ladder can still submit while Android treats this process as a foreground
-         * service. The previous 60s grace was shorter than Google Android Auto's ~15s drop of
-         * the head-unit session, so the service died and Xiaomi refused the next join.
-         */
-        private const val WIFI_PARK_MILLIS = 180_000L
         private const val WIFI_PARK_POLL_MS = 2_000L
+        private const val SETTLE_POLL_MS = 500L
         private const val NETWORK_REJOIN_WAIT_MILLIS = 75_000L
         private const val RECOVERY_RETRY_MILLIS = 5_000L
         private const val WAKE_LOCK_TIMEOUT_MS = 4 * 60 * 60 * 1_000L

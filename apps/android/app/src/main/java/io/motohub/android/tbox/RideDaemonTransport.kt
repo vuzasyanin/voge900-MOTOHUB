@@ -117,6 +117,13 @@ class RideDaemonTransport(
     private var session: MobileSession? = null
     @Volatile
     private var sessionLink: TBoxLink? = null
+    /**
+     * The endpoint the last completed discovery confirmed, so a dash-page return can re-probe it
+     * directly instead of deriving it again. Its lifetime matches its validity exactly: recovery
+     * reuses this transport instance, and a fresh instance has no session to resume into.
+     */
+    @Volatile
+    private var lastConfirmedHost: TBoxHost? = null
     private val sessionLock = Any()
     private val nextSessionGeneration = AtomicLong(0L)
     @Volatile
@@ -179,6 +186,7 @@ class RideDaemonTransport(
             } else {
                 discoverWithRetry(link, expectedModelId)
             }
+            lastConfirmedHost = host
             val profile = protocolProfile.takeIf { it != TBoxModelProfile.GENERIC }
                 ?: TBoxModelProfile.resolve(expectedModelId, null)
             val mobileConfig = Api.newMobileConfig(
@@ -578,9 +586,17 @@ class RideDaemonTransport(
      * One short NSD window so a Back→Up dash return is not blocked for 30s on a
      * link that is about to bounce. The session service retries this until the
      * dash-return budget expires; the full wake-probe tail stays on first connect.
+     *
+     * Every step here is deliberately narrow, because this runs in a loop while the rider waits
+     * and each attempt that answers "not yet" should cost as little as possible: the endpoint the
+     * previous session used is tried first, and only when it stays quiet does the transport fall
+     * back to deriving one from scratch.
      */
     private suspend fun discoverForResumeWithRetry(link: TBoxLink, expectedModelId: String?): TBoxHost {
-        if (link is TBoxLink.WifiDirect) return discoverOverWifiDirect(link)
+        lastConfirmedHost?.let { known ->
+            probeKnownEndpoint(link, known)?.let { return it }
+        }
+        if (link is TBoxLink.WifiDirect) return discoverOverWifiDirect(link, resume = true)
         if (link is TBoxLink.PhoneHotspot) return discoverOverPhoneHotspot(link, expectedModelId)
         try {
             return withTimeout(RESUME_DISCOVERY_TIMEOUT_MS) { discoverWithAndroidNsd(link, expectedModelId) }
@@ -592,6 +608,43 @@ class RideDaemonTransport(
             )
         }
     }
+
+    /**
+     * Re-confirms the endpoint the previous session used with a single short wake probe.
+     *
+     * A completed CMD_MDNS_RESPOND handshake is the same proof full discovery demands before it
+     * hands an endpoint back, so on success the stored [host] is reused verbatim - package name
+     * included, which a bare probe could not have supplied on an infrastructure link.
+     */
+    private suspend fun probeKnownEndpoint(link: TBoxLink, host: TBoxHost): TBoxHost? =
+        withContext(Dispatchers.IO) {
+            val identity = EasyConnClientIdentity.probeOrder().firstOrNull() ?: return@withContext null
+            val answered = runCatching {
+                link.createSocket().use { socket ->
+                    socket.connect(
+                        InetSocketAddress(host.ipAddress, host.port),
+                        RESUME_WAKE_PROBE_CONNECT_TIMEOUT_MS
+                    )
+                    socket.soTimeout = RESUME_WAKE_PROBE_READ_TIMEOUT_MS
+                    writeWakeProbeFrame(socket.getOutputStream(), identity)
+                    readWakeProbeAck(socket.getInputStream())
+                }
+            }.getOrDefault(false)
+            if (!answered) {
+                ProjectionEventLog.debug(
+                    "DISCOVERY",
+                    "Dash-return probe of the previous endpoint ${host.ipAddress}:${host.port} " +
+                        "went unanswered; falling back to discovery."
+                )
+                return@withContext null
+            }
+            ProjectionEventLog.record(
+                "DISCOVERY",
+                "Dash returned on the previous EasyConn endpoint ${host.ipAddress}:${host.port}; " +
+                    "skipped rediscovery."
+            )
+            host
+        }
 
     private suspend fun finishInfrastructureDiscoveryOrThrow(
         link: TBoxLink,
@@ -638,15 +691,46 @@ class RideDaemonTransport(
      * a full CMD_MDNS_RESPOND handshake, so the group owner IS the confirmed EC endpoint - not an
      * invented one - matching what every reference implementation does for P2P dashes.
      */
-    private suspend fun discoverOverWifiDirect(link: TBoxLink.WifiDirect): TBoxHost {
+    private suspend fun discoverOverWifiDirect(
+        link: TBoxLink.WifiDirect,
+        resume: Boolean = false
+    ): TBoxHost {
         val peerAddress = link.gatewayIp.hostAddress
-        val acknowledged = sendEasyConnWakeProbe(link)
-        if (acknowledged != null && peerAddress != null) {
-            ProjectionEventLog.record(
-                "DISCOVERY",
-                "Wi-Fi Direct EasyConn endpoint confirmed at $peerAddress:$WAKE_PROBE_PORT."
+        // Stay on the live group and keep probing. A single ~12s refusal used to tear the
+        // group down and start a full rejoin, which on Xiaomi is refused on the first
+        // attempt and which resets EasyConn on VOGE dashes that were still booting.
+        //
+        // A dash-page return needs none of that patience: the group is still formed, the dash
+        // answered moments ago, and the caller is already retrying on its own schedule. So it
+        // gets one round instead of two, and the outer retry takes the place of the inner one.
+        val rounds = if (resume) 1 else DISCOVERY_MAX_ATTEMPTS
+        repeat(rounds) { attempt ->
+            val acknowledged = sendEasyConnWakeProbe(link, resume = resume)
+            if (acknowledged != null && peerAddress != null) {
+                ProjectionEventLog.record(
+                    "DISCOVERY",
+                    "Wi-Fi Direct EasyConn endpoint confirmed at $peerAddress:$WAKE_PROBE_PORT."
+                )
+                return TBoxHost(peerAddress, WAKE_PROBE_PORT, acknowledged)
+            }
+            if (attempt < rounds - 1) {
+                ProjectionEventLog.record(
+                    "DISCOVERY",
+                    "Wi-Fi Direct dash did not answer the wake probe " +
+                        "(attempt ${attempt + 1}/$rounds); keeping the group " +
+                        "and retrying. The dash may still be starting EasyConn."
+                )
+                delay(DISCOVERY_RETRY_DELAY_MS)
+            }
+        }
+        if (resume) {
+            // No port sweep on a resume. The port cannot have moved since the session that just
+            // ended, and twenty TCP connects would spend the rider's whole wait proving it.
+            throw IllegalStateException(
+                "The Wi-Fi Direct dash did not answer the dash-return wake probe at " +
+                    "${link.gatewayIp.hostAddress}:$WAKE_PROBE_PORT. " +
+                    "The rider may still be on the stock instrument cluster."
             )
-            return TBoxHost(peerAddress, WAKE_PROBE_PORT, acknowledged)
         }
         // Some firmware variants refuse 10930 outright (observed as ECONNREFUSED on T-Boxes the
         // reference projects never reverse-engineered) while answering the same handshake on a
@@ -876,26 +960,38 @@ class RideDaemonTransport(
             }
         }
 
-    private suspend fun sendEasyConnWakeProbe(link: TBoxLink): String? = withContext(Dispatchers.IO) {
+    private suspend fun sendEasyConnWakeProbe(
+        link: TBoxLink,
+        resume: Boolean = false
+    ): String? = withContext(Dispatchers.IO) {
         val peerIp = peerIpv4For(link)
         if (peerIp == null) {
             ProjectionEventLog.debug("DISCOVERY", "Wake probe skipped: no usable peer IPv4 could be derived.")
             return@withContext null
         }
-        val identities = EasyConnClientIdentity.probeOrder()
+        // A first connect must consider every identity, because which one a dash accepts is not
+        // knowable in advance. A dash-page return already knows: the leading entry is the name
+        // that earned the last acknowledgement, and trying the alternates again would only add
+        // seconds to a wait the rider is watching.
+        val identities =
+            if (resume) EasyConnClientIdentity.probeOrder().take(1) else EasyConnClientIdentity.probeOrder()
+        val connectTimeoutMs =
+            if (resume) RESUME_WAKE_PROBE_CONNECT_TIMEOUT_MS else WAKE_PROBE_CONNECT_TIMEOUT_MS
+        val readTimeoutMs =
+            if (resume) RESUME_WAKE_PROBE_READ_TIMEOUT_MS else WAKE_PROBE_READ_TIMEOUT_MS
         ProjectionEventLog.record(
             "DISCOVERY",
             "Sending an EasyConn wake probe to ${peerIp.hostAddress}:$WAKE_PROBE_PORT " +
                 "(identities: ${identities.joinToString()})."
         )
         identities.forEachIndexed { position, identity ->
-            val budget = if (position == 0) WAKE_PROBE_ATTEMPTS else 1
+            val budget = if (resume || position > 0) 1 else WAKE_PROBE_ATTEMPTS
             repeat(budget) { attempt ->
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 try {
                     link.createSocket().use { socket ->
-                        socket.connect(InetSocketAddress(peerIp, WAKE_PROBE_PORT), WAKE_PROBE_CONNECT_TIMEOUT_MS)
-                        socket.soTimeout = WAKE_PROBE_READ_TIMEOUT_MS
+                        socket.connect(InetSocketAddress(peerIp, WAKE_PROBE_PORT), connectTimeoutMs)
+                        socket.soTimeout = readTimeoutMs
                         writeWakeProbeFrame(socket.getOutputStream(), identity)
                         if (readWakeProbeAck(socket.getInputStream())) {
                             ProjectionEventLog.record(
@@ -1272,6 +1368,19 @@ class RideDaemonTransport(
                 ProjectionEventLog.debug("TBOX") {
                     "PXC event received: command=$command, bytes=${payload?.size ?: 0}."
                 }
+                // The two clock questions, at record level rather than debug: a dash asks one or
+                // the other and never both, and which one it asked is the whole diagnosis for a
+                // rider whose date and time keep resetting. At debug it was absent from every
+                // ordinary problem report - exactly the reports that carry the complaint.
+                if (command == PXC_QUERY_TIME_COMMAND || command == PXC_CLOCK_KEEPALIVE_COMMAND) {
+                    ProjectionEventLog.record(
+                        "CLOCK",
+                        "Dash asked for the time with " +
+                            "${protocolCommandName(type, command)} " +
+                            "(0x${command.toString(16)}), ${payload?.size ?: 0} bytes. The daemon " +
+                            "answers it with ${java.util.TimeZone.getDefault().id}."
+                    )
+                }
             }
             if (type == PXC_EVENT_SOURCE && command == PXC_HUD_CONFIG_COMMAND) {
                 val capabilities = payload?.let(::decodeTBoxCapabilities)
@@ -1325,6 +1434,7 @@ class RideDaemonTransport(
                             "model=${capabilities.carModel ?: "not reported"}, " +
                             "profile=${protocolProfile.key}."
                     )
+                    logDashClock(capabilities)
                     // Nothing claimed this dashboard, so no profile knows its geometry, touch
                     // behaviour or firmware quirks - the one case a rider cannot diagnose from
                     // the outside. Report the whitelisted CLIENT_INFO subset and every candidate
@@ -1415,6 +1525,42 @@ class RideDaemonTransport(
             mutableEvents.tryEmit(TBoxEvent.Stopped)
         }
 
+    }
+
+    /**
+     * Reports what the dashboard thinks the time is, the moment it says so.
+     *
+     * Riders keep finding the dash's date and time back at a factory value, and nothing in the app
+     * could say why, because `currentHUTime` was never read on the Kotlin side at all. Setting the
+     * clock is the daemon's job and cannot be done from here, so this is deliberately only
+     * evidence - but it is the evidence the question needs, and one ordinary log now answers it:
+     * whether the dash arrived with a wall clock or an uptime counter, how far off it is, and
+     * whether it claims to accept a correction at all. Without that, a Go-side change to re-sync
+     * periodically would be a guess.
+     */
+    private fun logDashClock(capabilities: TBoxCapabilities) {
+        val reported = capabilities.currentHuTimeMillis
+        val supportsSync = capabilities.syncCorrectTime
+        if (reported == null) {
+            ProjectionEventLog.record(
+                "CLOCK",
+                "The dash did not report currentHUTime in CLIENT_INFO; " +
+                    "supportSyncCorrectTime=${supportsSync ?: "not reported"}."
+            )
+            return
+        }
+        val verdict = if (looksLikeDashUptime(reported)) {
+            "looks like uptime, not a wall clock (below ${HU_TIME_UPTIME_THRESHOLD_MS}ms), so its " +
+                "clock was never set or was reset"
+        } else {
+            val skewMillis = reported - System.currentTimeMillis()
+            "looks like a wall clock, ${skewMillis / 1_000L}s away from this phone's"
+        }
+        ProjectionEventLog.record(
+            "CLOCK",
+            "Dash clock on CLIENT_INFO: currentHUTime=$reported ($verdict); " +
+                "supportSyncCorrectTime=${supportsSync ?: "not reported"}."
+        )
     }
 
     /**
@@ -1550,6 +1696,12 @@ class RideDaemonTransport(
         const val WAKE_PROBE_CONNECT_TIMEOUT_MS = 3_000
         const val WAKE_PROBE_READ_TIMEOUT_MS = 5_000
         const val WAKE_PROBE_RETRY_DELAY_MS = 1_000L
+        // The full timeouts above cover a dash that is still booting its EasyConn service. On a
+        // dash-page return the dash is already up one Wi-Fi hop away, so a probe that has not
+        // been answered this quickly means the rider simply has not pressed Up yet, and the
+        // caller is better off retrying than sitting on the socket.
+        const val RESUME_WAKE_PROBE_CONNECT_TIMEOUT_MS = 1_200
+        const val RESUME_WAKE_PROBE_READ_TIMEOUT_MS = 2_000
         // Fallback sweep for firmware that refuses 10930: the only ports any reference EasyConn
         // implementation documents (PXC 10920-10922, probe 10930) plus a narrow neighborhood in
         // case the whole block shifted (same range TBoxPortScanner uses for diagnostics).
@@ -1578,6 +1730,8 @@ class RideDaemonTransport(
         const val PXC_HEARTBEAT_COMMAND = 0x70000000L
         const val PXC_HEARTBEAT_ACK_COMMAND = 0x70000001L
         const val PXC_CLOCK_KEEPALIVE_COMMAND = 0x10600L
+        /** The other clock question, answered with JSON rather than the binary stamp above. */
+        const val PXC_QUERY_TIME_COMMAND = 0x10450L
         const val MEDIA_CONTROL_PING_COMMAND = 64L
         const val PXC_HUD_CONFIG_COMMAND = 65_552L
         const val MEDIA_CAPTURE_CONFIG_COMMAND = 16L
@@ -1628,7 +1782,7 @@ class RideDaemonTransport(
             // the binary stamp 0x10600 wants. A dash sends one or the other, never both: a Voge
             // log (DIRECT-VOGE-034672, 2026-08-02) has one 0x10450 right after the handshake and
             // zero 0x10600 across five days, which is why its clock was never set.
-            0x10450L to "QUERY_TIME",
+            PXC_QUERY_TIME_COMMAND to "QUERY_TIME",
             0x10451L to "QUERY_TIME_ACK",
             0x104a0L to "NOTIFY_104A0",
             0x10040L to "NAVI_CAPS"

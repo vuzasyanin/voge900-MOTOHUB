@@ -1,5 +1,6 @@
 package io.motohub.android.feature.pairing
 
+import io.motohub.android.session.MotorcycleProfile
 import io.motohub.android.session.TBoxConnectionMode
 import io.motohub.android.tbox.ThinkerRideProtocol
 import java.io.ByteArrayOutputStream
@@ -40,8 +41,48 @@ data class TBoxQrPayload(
      * ThinkerRide code means "pair over BLE, the dash connects to you", which no SSID shape or
      * modelId could re-derive later. Null leaves the saved profile's mode untouched.
      */
-    val suggestedConnectionMode: TBoxConnectionMode? = null
+    val suggestedConnectionMode: TBoxConnectionMode? = null,
+    /**
+     * The dash's own hardware address in colon-lowercase form, when the code carried one. It is
+     * the only stable identity a phone-hosted dash has: its "SSID" is a name MOTO-HUB invents
+     * from this very MAC, so two codes for one dash agree here even when they disagree there.
+     */
+    val deviceMac: String? = null
 )
+
+/**
+ * The saved motorcycle a scanned code belongs to, or null when it is a new one.
+ *
+ * An exact SSID match was the whole test. That is right for a dash whose network name is its own,
+ * and wrong for the ones where MOTO-HUB invents it: a phone-hosted dash is saved as
+ * `PHONE-HOTSPOT-<last 6 of MAC>`, and the two dialects that describe such a dash used to spell
+ * that MAC differently. Rescanning the other of a dash's two codes then added a second motorcycle
+ * instead of updating the one the rider already had.
+ */
+fun List<MotorcycleProfile>.matching(payload: TBoxQrPayload): MotorcycleProfile? {
+    val mac = payload.deviceMac
+    if (mac != null) {
+        val suffix = mac.replace(":", "").takeLast(MAC_SSID_SUFFIX_LENGTH)
+        firstOrNull { saved ->
+            saved.isHostedName() &&
+                saved.ssid.takeLast(MAC_SSID_SUFFIX_LENGTH).equals(suffix, ignoreCase = true) &&
+                // A modelId either side leaves blank cannot contradict anything; two that are
+                // both present and different are two dashes whose MACs happen to end alike.
+                (payload.modelId == null || saved.modelId == null || saved.modelId == payload.modelId)
+        }?.let { return it }
+    }
+    return firstOrNull { saved ->
+        // An invented name is only ever as good as the identity it was built from, so once that
+        // identity has said no the name must not say yes on its own.
+        !(mac != null && saved.isHostedName()) && saved.ssid.equals(payload.ssid, ignoreCase = true)
+    }
+}
+
+private fun MotorcycleProfile.isHostedName(): Boolean =
+    ssid.startsWith(HOSTED_SSID_PREFIX, ignoreCase = true)
+
+internal const val HOSTED_SSID_PREFIX = "PHONE-HOTSPOT-"
+private const val MAC_SSID_SUFFIX_LENGTH = 6
 
 object TBoxQrParser {
     private const val WIFI_SCHEME = "WIFI:"
@@ -73,15 +114,23 @@ object TBoxQrParser {
         val match = CARBIT_TOKEN.matchEntire(rawValue.trim()) ?: return null
         val mac = formatMac(match.groupValues[1]) ?: return null
         return TBoxQrPayload(
-            ssid = "PHONE-HOTSPOT-${match.groupValues[1].takeLast(6)}",
+            // Built from the normalised MAC, not from the code's own casing: the provisioning-URL
+            // dialect below describes the same dash and normalises first, and a name that differs
+            // only in case used to save the dash twice.
+            ssid = hostedSsidFor(mac),
             password = "",
             encryption = null,
             modelId = null,
             displayName = "Phone hotspot (${mac.takeLast(8)})",
             origin = TBoxQrOrigin.RECOGNISED,
-            suggestedConnectionMode = TBoxConnectionMode.PHONE_HOTSPOT
+            suggestedConnectionMode = TBoxConnectionMode.PHONE_HOTSPOT,
+            deviceMac = mac
         )
     }
+
+    /** The name MOTO-HUB gives a dash that has none of its own, so every dialect agrees on it. */
+    private fun hostedSsidFor(mac: String): String =
+        HOSTED_SSID_PREFIX + mac.replace(":", "").takeLast(6)
 
     /**
      * The ThinkerRide (KOVE) pairing code:
@@ -160,9 +209,7 @@ object TBoxQrParser {
         val phoneHotspot = (action and 128) != 0 ||
             (ssid.isEmpty() && mac != null && parameters.containsKey("bm"))
         if (phoneHotspot) {
-            val syntheticSsid = ssid.ifEmpty {
-                "PHONE-HOTSPOT-${mac?.replace(":", "").orEmpty().takeLast(6)}"
-            }
+            val syntheticSsid = ssid.ifEmpty { mac?.let(::hostedSsidFor) ?: HOSTED_SSID_PREFIX }
             val displayName = parameters["name"]?.takeIf { it.isNotBlank() }
                 ?: mac?.let { "Phone hotspot (${it.takeLast(8)})" }
             return TBoxQrPayload(
@@ -172,7 +219,8 @@ object TBoxQrParser {
                 modelId = parameters["modelid"],
                 displayName = displayName,
                 origin = origin,
-                suggestedConnectionMode = TBoxConnectionMode.PHONE_HOTSPOT
+                suggestedConnectionMode = TBoxConnectionMode.PHONE_HOTSPOT,
+                deviceMac = mac
             )
         }
 
@@ -185,17 +233,27 @@ object TBoxQrParser {
             modelId = parameters["modelid"],
             displayName = parameters["name"],
             origin = origin,
-            suggestedConnectionMode = connectionModeFromAction(action)
+            suggestedConnectionMode = connectionModeFromAction(action, ssid),
+            deviceMac = mac
         )
     }
 
     /**
      * Maps the Carbit `action` bitmask to an explicit transport when one mode is advertised
      * without a fallback — bit3 (8) is Wi-Fi Direct-only, bit7 (128) is phone-hosted hotspot.
+     *
+     * WIFI_DIRECT is only persisted for a real `DIRECT-…` group name. VOGE/Zontes pairing
+     * codes often set bit3 while the SSID is the P2P *device* name (`VOGE-5G-b780`). Saving
+     * that as WIFI_DIRECT locked AUTO out of the SoftAP fallback, so a later manual save to
+     * AUTO (or a QR without bit3) flipped the profile onto the access-point path and
+     * reconnects died. AUTO now infers P2P from the SSID/modelId and can still fall back.
      */
-    private fun connectionModeFromAction(action: Int): TBoxConnectionMode? = when {
+    private fun connectionModeFromAction(action: Int, ssid: String): TBoxConnectionMode? = when {
         (action and 128) != 0 -> TBoxConnectionMode.PHONE_HOTSPOT
-        (action and 8) != 0 && (action and 1) == 0 && (action and 2) == 0 ->
+        (action and 8) != 0 &&
+            (action and 1) == 0 &&
+            (action and 2) == 0 &&
+            ssid.trim().removeSurrounding("\"").startsWith("DIRECT-", ignoreCase = true) ->
             TBoxConnectionMode.WIFI_DIRECT
         else -> null
     }

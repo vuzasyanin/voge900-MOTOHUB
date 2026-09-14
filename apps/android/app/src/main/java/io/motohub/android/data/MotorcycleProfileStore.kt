@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import io.motohub.android.session.MotorcycleProfile
+import io.motohub.android.session.ProjectionEventLog
 import io.motohub.android.session.TBoxConnectionMode
 import java.security.KeyStore
 import java.util.UUID
@@ -27,12 +28,26 @@ class MotorcycleProfileStore(context: Context) {
         Context.MODE_PRIVATE
     )
 
+    /**
+     * Every profile that can still be read, and nothing destructive when one cannot.
+     *
+     * This used to answer any decoding failure by calling [clear], which wiped every saved
+     * motorcycle - credentials, name, photo, tuned settings - because one entry had become
+     * unreadable, and did it silently. The usual cause is not corruption at all but the Keystore
+     * key being invalidated, which takes out exactly the passwords; the rider then found an empty
+     * garage and had to rescan the dash QR code. A bad entry is now skipped and reported.
+     */
     fun loadAll(): List<MotorcycleProfile> {
         val serialized = preferences.getString(KEY_PROFILES, null)
         if (!serialized.isNullOrBlank()) {
             return runCatching { decodeProfiles(JSONArray(serialized)) }
-                .getOrElse {
-                    clear()
+                .getOrElse { failure ->
+                    ProjectionEventLog.error(
+                        "GARAGE",
+                        "The saved motorcycles could not be read at all; none was loaded. " +
+                            "They are left on disk untouched.",
+                        failure
+                    )
                     emptyList()
                 }
         }
@@ -111,7 +126,9 @@ class MotorcycleProfileStore(context: Context) {
             val item = array.getJSONObject(index)
             val ssid = item.optString(KEY_SSID).trim()
             if (ssid.isEmpty()) continue
-            add(
+            // One entry at a time, so a single undecryptable password costs the rider that
+            // motorcycle and not the whole garage.
+            runCatching {
                 MotorcycleProfile(
                     id = item.optString(KEY_PROFILE_ID).ifBlank { UUID.randomUUID().toString() },
                     ssid = ssid,
@@ -128,7 +145,15 @@ class MotorcycleProfileStore(context: Context) {
                         .let { raw -> TBoxConnectionMode.entries.firstOrNull { it.name == raw } }
                         ?: TBoxConnectionMode.AUTO
                 )
-            )
+            }.onSuccess { profile -> add(profile) }
+                .onFailure { failure ->
+                    ProjectionEventLog.error(
+                        "GARAGE",
+                        "Saved motorcycle $ssid could not be read and was skipped; the other " +
+                            "motorcycles are unaffected. Re-pair this one to restore it.",
+                        failure
+                    )
+                }
         }
     }
 

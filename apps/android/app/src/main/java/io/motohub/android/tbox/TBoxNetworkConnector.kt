@@ -18,6 +18,7 @@ import io.motohub.android.feature.settings.MotoHubSettings
 import io.motohub.android.session.LogLevel
 import io.motohub.android.session.MotorcycleProfile
 import io.motohub.android.session.ProjectionEventLog
+import io.motohub.android.session.TBoxConnectionMode
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
@@ -851,11 +852,24 @@ class TBoxNetworkConnector(context: Context) {
                             "Android refused the request for ${profile.ssid} without trying it: " +
                                 "MOTO-HUB was in the background when it was made. Open MOTO-HUB " +
                                 "and tap Connect again."
+                        // Rescanning the QR code only ever fixes wrong credentials, so it is
+                        // advice worth giving exactly once the scan has placed the dash on the
+                        // air. Offering it for a dash that is simply switched off - or for an
+                        // AUTO profile whose Wi-Fi Direct road has not been tried yet - is how
+                        // riders ended up deleting a perfectly good motorcycle and pairing it
+                        // again to fix something that was never wrong with it.
+                        isDashBroadcasting(profile) == true ->
+                            "Android gave up connecting to ${profile.ssid}: the dash is " +
+                                "broadcasting it, so either the saved password no longer " +
+                                "matches or the connection dialog was dismissed. Rescan the " +
+                                "dash QR code and retry."
+                        profile.connectionMode == TBoxConnectionMode.AUTO ->
+                            "${profile.ssid} is not on the air as an access point; trying " +
+                                "Wi-Fi Direct instead."
                         else ->
-                            "Android gave up connecting to ${profile.ssid}: either the dash was " +
-                                "not broadcasting it, the saved password no longer matches, or " +
-                                "the connection dialog was dismissed. Rescan the dash QR code " +
-                                "and retry."
+                            "Android gave up connecting to ${profile.ssid}: the dash is not " +
+                                "broadcasting it. Turn the ignition on, let the dash finish " +
+                                "booting, then retry."
                     }
                 )
                 releaseCallback(networkCallback)
