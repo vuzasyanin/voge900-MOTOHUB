@@ -63,7 +63,17 @@ jobs:
 
       - name: Run Android quality gates
         working-directory: apps/android
-        run: ./gradlew --no-daemon lintDebug testDebugUnitTest assembleDebug
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon \
+            lintGithubDebug \
+            lintRustoreDebug \
+            testGithubDebugUnitTest \
+            testRustoreDebugUnitTest \
+            assembleGithubDebug \
+            assembleRustoreDebug \
+            verifyGithubDebugInstallPermission \
+            verifyRustoreDebugInstallPermission
 
   ridedaemon:
     name: Locked RideDaemon tests

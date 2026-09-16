@@ -306,11 +306,18 @@ class MainActivity : ComponentActivity() {
                 }
                 var seamlessResumePermissionPending by remember { mutableStateOf(false) }
                 var unknownSourcesAllowed by remember {
-                    mutableStateOf(GithubUpdateInstaller.canInstallUnknownSources(this@MainActivity))
+                    mutableStateOf(
+                        BuildConfig.GITHUB_UPDATES &&
+                            GithubUpdateInstaller.canInstallUnknownSources(this@MainActivity)
+                    )
                 }
-                val updateRepository = remember { GithubUpdateRepository() }
+                val updateRepository = remember {
+                    if (BuildConfig.GITHUB_UPDATES) GithubUpdateRepository() else null
+                }
                 val updateScope = rememberCoroutineScope()
                 fun checkForUpdates(openDialog: Boolean) {
+                    if (!BuildConfig.GITHUB_UPDATES) return
+                    val repository = updateRepository ?: return
                     if (!openDialog) {
                         // Automatic checks are throttled to once/24h so a rider who opens
                         // MOTO-HUB many times a day doesn't hit GitHub's anonymous API rate
@@ -336,7 +343,7 @@ class MainActivity : ComponentActivity() {
                     updateError = null
                     updateScope.launch {
                         val result = runCatching {
-                            withContext(Dispatchers.IO) { updateRepository.fetchReleases() }
+                            withContext(Dispatchers.IO) { repository.fetchReleases() }
                         }
                         updateLoading = false
                         result.onSuccess { releases ->
@@ -619,6 +626,7 @@ class MainActivity : ComponentActivity() {
                     unknownSourcesAllowed = GithubUpdateInstaller.canInstallUnknownSources(context)
                 }
                 LaunchedEffect(showSafetyDisclaimer) {
+                    if (!BuildConfig.GITHUB_UPDATES) return@LaunchedEffect
                     if (showSafetyDisclaimer) return@LaunchedEffect
                     if (updateAutoCheckAttempted) return@LaunchedEffect
                     updateAutoCheckAttempted = true
@@ -912,9 +920,13 @@ class MainActivity : ComponentActivity() {
                                 ).show()
                             }
                         },
-                        onCheckUpdates = {
-                            ProjectionEventLog.record("UPDATES", "Manual GitHub update check requested.")
-                            checkForUpdates(openDialog = true)
+                        onCheckUpdates = if (BuildConfig.GITHUB_UPDATES) {
+                            {
+                                ProjectionEventLog.record("UPDATES", "Manual GitHub update check requested.")
+                                checkForUpdates(openDialog = true)
+                            }
+                        } else {
+                            null
                         },
                         onBack = {
                             ProjectionEventLog.record("UI", "About screen closed.")
@@ -1313,7 +1325,7 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
-                if (showUpdateDialog) {
+                if (BuildConfig.GITHUB_UPDATES && showUpdateDialog) {
                     GithubUpdateDialog(
                         releases = updateReleases,
                         isLoading = updateLoading,

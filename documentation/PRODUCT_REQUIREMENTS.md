@@ -118,7 +118,9 @@ the full Android Auto mode.
 - `FR-32`: record trips manually or automatically with projection modes and native Navigation;
   a Navigation-owned recording must survive an interrupted Ride Dashboard or Android Auto session.
 - `FR-33`: store trips locally, show them on an interactive map and export GPX.
-- `FR-34`: check GitHub releases/pre-releases and offer only a newer APK build.
+- `FR-34`: on the GitHub channel, check GitHub releases/pre-releases and offer
+  only a newer APK build. The RuStore channel updates through the store and
+  must not request `REQUEST_INSTALL_PACKAGES`.
 - `FR-35`: allow users to disable touchscreen advertisement and configure
   handlebar timing/actions.
 - `FR-36`: store per-motorcycle safe margins and apply them to Android Auto

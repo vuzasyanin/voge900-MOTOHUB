@@ -31,12 +31,15 @@ object SentryIntegration {
                 options.dsn = dsn
                 options.environment = "core"
                 options.release = "${BuildConfig.APPLICATION_ID}@${BuildConfig.VERSION_NAME}"
-                options.dist = BuildConfig.VERSION_CODE.toString()
+                options.dist = "${BuildConfig.VERSION_CODE}-${BuildConfig.CHANNEL}"
                 options.isSendDefaultPii = false
                 options.isEnableAutoSessionTracking = true
                 options.isDebug = BuildConfig.SENTRY_DEBUG
             }
             enabled = true
+            Sentry.configureScope { scope ->
+                scope.setTag("motohub.channel", BuildConfig.CHANNEL)
+            }
         }.onFailure { failure ->
             Log.e(LOG_TAG, "Sentry initialization failed; continuing without telemetry", failure)
         }
@@ -51,6 +54,7 @@ object SentryIntegration {
             Sentry.withScope { scope ->
                 scope.setTag("motohub.source", source)
                 scope.setTag("motohub.edition", "core")
+                scope.setTag("motohub.channel", BuildConfig.CHANNEL)
                 scope.fingerprint = fingerprintOf(source, message)
                 Sentry.captureMessage(message, SentryLevel.ERROR)
             }

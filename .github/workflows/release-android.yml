@@ -93,7 +93,7 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0"
 
-      - name: Test and build release APK
+      - name: Test and build release APKs
         working-directory: apps/android
         env:
           SENTRY_CORE_DSN: ${{ secrets.SENTRY_CORE_DSN }}
@@ -103,11 +103,16 @@ jobs:
             --no-daemon \
             clean \
             -PincludeAndroidAutoIdentity=true \
-            testDebugUnitTest \
-            lintRelease \
-            assembleRelease
+            testGithubDebugUnitTest \
+            testRustoreDebugUnitTest \
+            lintGithubRelease \
+            lintRustoreRelease \
+            assembleGithubRelease \
+            assembleRustoreRelease \
+            verifyGithubReleaseInstallPermission \
+            verifyRustoreReleaseInstallPermission
 
-      - name: Sign and verify release APK
+      - name: Sign and verify release APKs
         id: package
         env:
           MOTOHUB_KEYSTORE_PASSWORD: ${{ secrets.MOTOHUB_KEYSTORE_PASSWORD }}
@@ -115,8 +120,9 @@ jobs:
         run: |
           set -euo pipefail
           build_tools="$ANDROID_HOME/build-tools/36.0.0"
-          metadata="apps/android/app/build/outputs/apk/release/output-metadata.json"
-          unsigned_apk="apps/android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          metadata="apps/android/app/build/outputs/apk/github/release/output-metadata.json"
+          github_dir="apps/android/app/build/outputs/apk/github/release"
+          rustore_dir="apps/android/app/build/outputs/apk/rustore/release"
           aligned_apk="$RUNNER_TEMP/motohub-release/app-release-aligned.apk"
           resources_dump="$RUNNER_TEMP/motohub-release/resources.txt"
           badging_dump="$RUNNER_TEMP/motohub-release/badging.txt"
@@ -129,45 +135,102 @@ jobs:
             exit 1
           fi
 
-          "$build_tools/aapt" dump resources "$unsigned_apk" > "$resources_dump"
+          pick_apk() {
+            local dir="$1"
+            local channel="$2"
+            if [[ -f "$dir/app-$channel-release-unsigned.apk" ]]; then
+              echo "$dir/app-$channel-release-unsigned.apk"
+            elif [[ -f "$dir/app-$channel-release.apk" ]]; then
+              echo "$dir/app-$channel-release.apk"
+            else
+              echo "Missing $channel release APK under $dir" >&2
+              return 1
+            fi
+          }
+
+          github_apk="$(pick_apk "$github_dir" github)"
+          rustore_apk="$(pick_apk "$rustore_dir" rustore)"
+
+          "$build_tools/aapt" dump permissions "$github_apk" \
+            > "$RUNNER_TEMP/motohub-release/github-permissions.txt"
+          grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' \
+            "$RUNNER_TEMP/motohub-release/github-permissions.txt"
+
+          "$build_tools/aapt" dump permissions "$rustore_apk" \
+            > "$RUNNER_TEMP/motohub-release/rustore-permissions.txt"
+          if grep -q 'android.permission.REQUEST_INSTALL_PACKAGES' \
+            "$RUNNER_TEMP/motohub-release/rustore-permissions.txt"; then
+            echo "rustore APK must not declare REQUEST_INSTALL_PACKAGES" >&2
+            exit 1
+          fi
+
+          "$build_tools/aapt" dump resources "$github_apk" > "$resources_dump"
           grep -q 'raw/aa_cert' "$resources_dump"
           grep -q 'raw/aa_identity_data' "$resources_dump"
+
+          "$build_tools/aapt" dump resources "$rustore_apk" \
+            > "$RUNNER_TEMP/motohub-release/rustore-resources.txt"
+          grep -q 'raw/aa_cert' "$RUNNER_TEMP/motohub-release/rustore-resources.txt"
+          grep -q 'raw/aa_identity_data' "$RUNNER_TEMP/motohub-release/rustore-resources.txt"
 
           release_dir="$RUNNER_TEMP/motohub-release/assets"
           mkdir -p "$release_dir"
           apk_name="MOTO-HUB-${version_name}-${version_code}-android-auto.apk"
           apk_path="$release_dir/$apk_name"
+          rustore_apk_name="MOTO-HUB-${version_name}-${version_code}-rustore.apk"
+          rustore_apk_path="$release_dir/$rustore_apk_name"
 
-          "$build_tools/zipalign" -p -f 4 "$unsigned_apk" "$aligned_apk"
-          "$build_tools/apksigner" sign \
-            --ks "$RUNNER_TEMP/motohub-release/motohub-release.jks" \
-            --ks-key-alias "$MOTOHUB_KEY_ALIAS" \
-            --ks-pass env:MOTOHUB_KEYSTORE_PASSWORD \
-            --key-pass env:MOTOHUB_KEYSTORE_PASSWORD \
-            --out "$apk_path" \
-            "$aligned_apk"
+          sign_apk() {
+            local input="$1"
+            local output="$2"
+            "$build_tools/zipalign" -p -f 4 "$input" "$aligned_apk"
+            "$build_tools/apksigner" sign \
+              --ks "$RUNNER_TEMP/motohub-release/motohub-release.jks" \
+              --ks-key-alias "$MOTOHUB_KEY_ALIAS" \
+              --ks-pass env:MOTOHUB_KEYSTORE_PASSWORD \
+              --key-pass env:MOTOHUB_KEYSTORE_PASSWORD \
+              --out "$output" \
+              "$aligned_apk"
+            "$build_tools/zipalign" -c -v 4 "$output"
+            "$build_tools/apksigner" verify --verbose --print-certs "$output"
+            "$build_tools/aapt" dump badging "$output" > "$badging_dump"
+            grep -q "versionCode='$version_code'" "$badging_dump"
+            grep -q "versionName='$version_name'" "$badging_dump"
+          }
 
-          "$build_tools/zipalign" -c -v 4 "$apk_path"
-          "$build_tools/apksigner" verify --verbose --print-certs "$apk_path"
-          "$build_tools/aapt" dump badging "$apk_path" > "$badging_dump"
-          grep -q "versionCode='$version_code'" "$badging_dump"
-          grep -q "versionName='$version_name'" "$badging_dump"
+          sign_apk "$github_apk" "$apk_path"
+          sign_apk "$rustore_apk" "$rustore_apk_path"
 
           checksum_path="$apk_path.sha256"
+          rustore_checksum_path="$rustore_apk_path.sha256"
           sha256sum "$apk_path" > "$checksum_path"
+          sha256sum "$rustore_apk_path" > "$rustore_checksum_path"
           {
             echo "apk_path=$apk_path"
             echo "checksum_path=$checksum_path"
             echo "apk_name=$apk_name"
+            echo "rustore_apk_path=$rustore_apk_path"
+            echo "rustore_checksum_path=$rustore_checksum_path"
+            echo "rustore_apk_name=$rustore_apk_name"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Upload verified workflow artifact
+      - name: Upload verified GitHub workflow artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ${{ steps.package.outputs.apk_name }}
           path: |
             ${{ steps.package.outputs.apk_path }}
             ${{ steps.package.outputs.checksum_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload verified RuStore workflow artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ${{ steps.package.outputs.rustore_apk_name }}
+          path: |
+            ${{ steps.package.outputs.rustore_apk_path }}
+            ${{ steps.package.outputs.rustore_checksum_path }}
           if-no-files-found: error
           retention-days: 14
 

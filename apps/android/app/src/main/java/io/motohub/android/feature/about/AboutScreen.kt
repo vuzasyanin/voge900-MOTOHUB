@@ -48,7 +48,7 @@ private const val PROTOTYPE_UNLOCK_TAP_COUNT = 10
 fun AboutScreen(
     onOpenGithub: () -> Unit,
     onOpenDiscord: () -> Unit,
-    onCheckUpdates: () -> Unit,
+    onCheckUpdates: (() -> Unit)? = null,
     onBack: () -> Unit,
     /** Editions with a hidden prototype pass this; where it is null the version
      *  card is inert and no unlock exists. This screen is shared by both
@@ -137,13 +137,15 @@ fun AboutScreen(
 
             if (showsMaps) MapCreditsCard()
             VersionCard(onUnlockPrototype = onUnlockPrototype)
-            Button(
-                onClick = onCheckUpdates,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-            ) {
-                Text(motoHubText("Check for updates"))
+            if (onCheckUpdates != null) {
+                Button(
+                    onClick = onCheckUpdates,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                ) {
+                    Text(motoHubText("Check for updates"))
+                }
             }
             DisclaimerCard()
 

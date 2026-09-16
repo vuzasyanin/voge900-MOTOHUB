@@ -9,6 +9,13 @@ projection and trip-recording sessions. `ridedaemon-lib` remains an isolated
 transport module: it receives already encoded H.264 frames and handles
 discovery, handshake, control channels and delivery to the T-Box.
 
+The Android Gradle module has one product-flavor dimension, `channel`:
+`github` and `rustore`. Both share `applicationId` `io.motohub.android` and the
+same `versionName` / `versionCode`. `github` includes `REQUEST_INSTALL_PACKAGES`
+and the in-app GitHub APK updater. `rustore` omits that permission and the
+updater so the store listing can pass moderation. This axis is orthogonal to
+CORE/PRO (`BuildConfig.IS_PRO`) and to `-PincludeAndroidAutoIdentity`.
+
 There are three separate projection modes:
 
 - screen/app mirroring through Android `MediaProjection`;

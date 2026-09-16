@@ -262,7 +262,6 @@ private fun GeneralDetail(
     onSeamlessResumeChanged: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    var autoUpdateChecks by remember { mutableStateOf(MotoHubSettings.autoUpdateChecks(context)) }
     val autostartEnabled = MotoHubSettings.autostartEnabled(context)
     val autostartService = MotoHubSettings.autostartService(context)
     MotoHubDetailScreen(
@@ -282,16 +281,19 @@ private fun GeneralDetail(
             value = if (autostartEnabled) motoHubText(autostartService.label) else motoHubText("Off"),
             onClick = onOpenAutostart
         )
-        ToggleRow(
-            title = context.getString(R.string.settings_check_updates_on_launch),
-            description = context.getString(R.string.settings_check_updates_on_launch_description),
-            checked = autoUpdateChecks,
-            onCheckedChange = {
-                autoUpdateChecks = it
-                MotoHubSettings.setAutoUpdateChecks(context, it)
-                ProjectionEventLog.record("SETTINGS", "Automatic update checks changed to enabled=$it.")
-            }
-        )
+        if (BuildConfig.GITHUB_UPDATES) {
+            var autoUpdateChecks by remember { mutableStateOf(MotoHubSettings.autoUpdateChecks(context)) }
+            ToggleRow(
+                title = context.getString(R.string.settings_check_updates_on_launch),
+                description = context.getString(R.string.settings_check_updates_on_launch_description),
+                checked = autoUpdateChecks,
+                onCheckedChange = {
+                    autoUpdateChecks = it
+                    MotoHubSettings.setAutoUpdateChecks(context, it)
+                    ProjectionEventLog.record("SETTINGS", "Automatic update checks changed to enabled=$it.")
+                }
+            )
+        }
         ToggleRow(
             title = context.getString(R.string.settings_enable_seamless_resume),
             description = if (seamlessResumeEnabled) {

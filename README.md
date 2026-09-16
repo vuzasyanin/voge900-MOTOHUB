@@ -17,7 +17,7 @@ JDK 21, Android SDK API 36, a physical device, and `apps/android/app/libs/hudlib
 ```bash
 export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
-./gradlew assembleDebug
+./gradlew assembleGithubDebug
 ```
 
 A default source build does pairing, mirroring and diagnostics. Android Auto needs identity files in `tooling/private/android-auto/` and `-PincludeAndroidAutoIdentity=true`. See [`documentation/`](documentation/).

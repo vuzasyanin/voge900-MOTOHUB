@@ -9,21 +9,58 @@ Use the JDK bundled with Android Studio and an Android SDK with API 36:
 ```bash
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
-./gradlew testDebugUnitTest
-./gradlew assembleDebug
+./gradlew testGithubDebugUnitTest
+./gradlew assembleGithubDebug
 ```
 
 The system JDK 26 is not compatible with the current Gradle/AGP combination.
 
-The public source intentionally excludes the Android Auto identity files. A normal build supports mirroring and T-Box streaming; Android Auto is enabled only when the files are supplied through the root `tooling/private/android-auto/` directory and the build is invoked with `-PincludeAndroidAutoIdentity=true`. Official GitHub release APKs are built with those inputs through encrypted GitHub Actions secrets and include Android Auto without requiring user configuration.
+The app has two product flavors on the `channel` dimension. They share
+`applicationId` `io.motohub.android` and the same `versionName` / `versionCode`:
+
+| Variant | Channel | In-app GitHub APK updates | `REQUEST_INSTALL_PACKAGES` |
+|---|---|---|---|
+| `githubDebug` / `githubRelease` | GitHub Releases | yes | yes |
+| `rustoreDebug` / `rustoreRelease` | RuStore | no | no |
+
+`github` is the default flavor. In Android Studio, open `apps/android` and pick
+the variant in **Build Variants**. `assembleDebug` / `assembleRelease` build
+both channels; use `assembleGithubRelease` or `assembleRustoreRelease` for a
+single artifact.
+
+Outputs:
+
+```text
+app/build/outputs/apk/github/debug/
+app/build/outputs/apk/github/release/
+app/build/outputs/apk/rustore/debug/
+app/build/outputs/apk/rustore/release/
+```
+
+The public source intentionally excludes the Android Auto identity files. A normal build supports mirroring and T-Box streaming; Android Auto is enabled only when the files are supplied through the root `tooling/private/android-auto/` directory and the build is invoked with `-PincludeAndroidAutoIdentity=true`. Official GitHub and RuStore release APKs are built with those inputs through encrypted GitHub Actions secrets and include Android Auto without requiring user configuration.
 
 For a local Android Auto build:
 
 ```bash
-./gradlew -PincludeAndroidAutoIdentity=true assembleDebug
+./gradlew -PincludeAndroidAutoIdentity=true assembleGithubDebug
 ```
 
-The APK is generated under `app/build/outputs/apk/debug/`. A default `./gradlew assembleDebug` build excludes the identity and therefore cannot start Android Auto. See the root [`documentation/PUBLIC_RELEASE.md`](../../documentation/PUBLIC_RELEASE.md) for the maintainer release process.
+A default assemble without `-PincludeAndroidAutoIdentity=true` excludes the identity and therefore cannot start Android Auto. See the root [`documentation/PUBLIC_RELEASE.md`](../../documentation/PUBLIC_RELEASE.md) for the maintainer release process.
+
+Store upload (RuStore) must use the rustore flavor with Android Auto identity:
+
+```bash
+./gradlew -PincludeAndroidAutoIdentity=true assembleRustoreRelease
+./gradlew -PincludeAndroidAutoIdentity=true exportRustoreStoreApk
+```
+
+Do not upload a `github` APK to RuStore: it still declares `REQUEST_INSTALL_PACKAGES`.
+
+Optional App Bundle for the store console:
+
+```bash
+./gradlew -PincludeAndroidAutoIdentity=true bundleRustoreRelease
+```
 
 ## Transport Status
 

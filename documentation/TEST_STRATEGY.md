@@ -33,6 +33,13 @@ Emulators and unit tests do not replace testing on the motorcycle.
 - GPX export and trip database filtering;
 - idempotent cleanup with fake dependencies.
 
+### Build Channel Gates
+
+Gradle `verify*InstallPermission` tasks read each variant's merged manifest:
+`github` must declare `REQUEST_INSTALL_PACKAGES`, `rustore` must not. CI runs
+these on debug variants; the tagged release workflow repeats them on release
+variants and dumps APK permissions with `aapt`.
+
 ### Go Tests
 
 In the `ridedaemon-lib` fork:
@@ -133,7 +140,9 @@ Video dumps must be excluded from user logs and deleted after testing.
 - start, finish, save, rename, delete and GPX-export a trip;
 - share application logs and confirm Android receives a diagnostic text file;
 - check GitHub update flow with no newer release, newer pre-release, newer
-  release and invalid/no-APK release fixtures.
+  release and invalid/no-APK release fixtures (GitHub channel only);
+- confirm the RuStore build has no in-app APK install path and no
+  `REQUEST_INSTALL_PACKAGES` permission.
 
 ## Device Matrix
 

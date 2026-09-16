@@ -1,3 +1,4 @@
+import com.android.build.api.artifact.SingleArtifact
 import java.io.File
 import java.util.Properties
 
@@ -94,6 +95,24 @@ android {
         manifestPlaceholders["appLabel"] = "MOTO-HUB"
     }
 
+    // GitHub sideload vs RuStore. Same applicationId and versionCode; only the
+    // in-app APK installer and REQUEST_INSTALL_PACKAGES differ. CORE/PRO
+    // (IS_PRO) and -PincludeAndroidAutoIdentity are separate axes.
+    flavorDimensions += "channel"
+    productFlavors {
+        create("github") {
+            dimension = "channel"
+            isDefault = true
+            buildConfigField("boolean", "GITHUB_UPDATES", "true")
+            buildConfigField("String", "CHANNEL", asBuildConfigString("github"))
+        }
+        create("rustore") {
+            dimension = "channel"
+            buildConfigField("boolean", "GITHUB_UPDATES", "false")
+            buildConfigField("String", "CHANNEL", asBuildConfigString("rustore"))
+        }
+    }
+
     signingConfigs {
         if (hasLocalReleaseSigning) {
             create("localRelease") {
@@ -108,7 +127,7 @@ android {
     buildTypes {
         debug {
             // Local variant only — nothing built from "debug" is ever published: GitHub gets
-            // release builds exclusively (exportPublicApk assembles the release variant).
+            // release builds exclusively (exportPublicApk assembles githubRelease).
             // Kept minified and non-debuggable so a local install behaves like the shipped
             // artifact; de-obfuscate stack traces with retrace + outputs/mapping/*/mapping.txt.
             isDebuggable = false
@@ -238,15 +257,51 @@ tasks.named("preBuild").configure {
     dependsOn(syncTranslationResources)
 }
 
+fun exportedArtifactName(suffix: String): String =
+    "MOTO-HUB-${android.defaultConfig.versionName}-${android.defaultConfig.versionCode}-$suffix.apk"
+
+fun channelReleaseApkFile(channel: String) =
+    layout.buildDirectory.file("outputs/apk/$channel/release/app-$channel-release.apk")
+
+androidComponents {
+    onVariants { variant ->
+        val flavor = variant.flavorName
+        if (flavor != "github" && flavor != "rustore") return@onVariants
+        val variantCapitalized = variant.name.replaceFirstChar { it.uppercase() }
+        val verifyTaskName = "verify${variantCapitalized}InstallPermission"
+        val manifest = variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
+        tasks.register(verifyTaskName) {
+            inputs.file(manifest)
+            doLast {
+                val text = manifest.get().asFile.readText()
+                val hasPermission = text.contains("android.permission.REQUEST_INSTALL_PACKAGES")
+                if (flavor == "github") {
+                    check(hasPermission) {
+                        "${variant.name} merged manifest must declare REQUEST_INSTALL_PACKAGES"
+                    }
+                } else {
+                    check(!hasPermission) {
+                        "${variant.name} merged manifest must not declare REQUEST_INSTALL_PACKAGES"
+                    }
+                }
+            }
+        }
+        tasks.matching { it.name == "assemble$variantCapitalized" }.configureEach {
+            finalizedBy(verifyTaskName)
+        }
+    }
+}
+
 val exportPublicApk by tasks.registering(Copy::class) {
-    // Only obfuscated release builds are published, so this is the release variant - never the
-    // "debug" buildType it used to copy. That variant is signed with the local debug key, which
-    // cannot update a release-signed install: on a phone already running MOTO-HUB it failed with
+    // Only obfuscated githubRelease builds are published this way - never debug, and never
+    // rustore. Debug is signed with the local debug key, which cannot update a release-signed
+    // install: on a phone already running MOTO-HUB it failed with
     // INSTALL_FAILED_UPDATE_INCOMPATIBLE, so it could never have been a real upgrade path.
-    dependsOn("assembleRelease")
-    from(layout.buildDirectory.file("outputs/apk/release/app-release.apk"))
+    dependsOn("assembleGithubRelease")
+    dependsOn("verifyGithubReleaseInstallPermission")
+    from(channelReleaseApkFile("github"))
     into(rootProject.projectDir.resolve("../../artifacts"))
-    rename { "MOTO-HUB-${android.defaultConfig.versionName}-${android.defaultConfig.versionCode}-public.apk" }
+    rename { exportedArtifactName("public") }
     doFirst {
         check(hasLocalReleaseSigning) {
             "The persistent MOTO-HUB release keystore and release-signing.properties are required."
@@ -254,8 +309,8 @@ val exportPublicApk by tasks.registering(Copy::class) {
         check(!noReleaseObfuscation) {
             "Published artifacts must be obfuscated: drop -PnoReleaseObfuscation to export."
         }
-        // This task copies whatever assembleRelease last produced. When that assemble ran with
-        // -PincludeAndroidAutoIdentity=true the copy silently carries res/raw/aa_cert and
+        // This task copies whatever assembleGithubRelease last produced. When that assemble ran
+        // with -PincludeAndroidAutoIdentity=true the copy silently carries res/raw/aa_cert and
         // aa_identity_data - the private Android Auto identity - into an artifact whose whole
         // purpose is to be published. Refuse to export rather than trust the invocation.
         check(!includeAndroidAutoIdentity.get()) {
@@ -264,9 +319,7 @@ val exportPublicApk by tasks.registering(Copy::class) {
         }
     }
     doLast {
-        val exported = destinationDir.resolve(
-            "MOTO-HUB-${android.defaultConfig.versionName}-${android.defaultConfig.versionCode}-public.apk"
-        )
+        val exported = destinationDir.resolve(exportedArtifactName("public"))
         // Belt and braces: verify the bytes that were actually copied, so a stale or
         // hand-placed APK can never be published with the identity inside it.
         val identityEntries = zipTree(exported).matching { include("res/raw/aa_cert", "res/raw/aa_identity_data") }
@@ -278,10 +331,11 @@ val exportPublicApk by tasks.registering(Copy::class) {
 }
 
 val exportPrivateAndroidAutoApk by tasks.registering(Copy::class) {
-    dependsOn("assembleRelease")
-    from(layout.buildDirectory.file("outputs/apk/release/app-release.apk"))
+    dependsOn("assembleGithubRelease")
+    dependsOn("verifyGithubReleaseInstallPermission")
+    from(channelReleaseApkFile("github"))
     into(rootProject.projectDir.resolve("../../artifacts"))
-    rename { "MOTO-HUB-${android.defaultConfig.versionName}-${android.defaultConfig.versionCode}-android-auto-private.apk" }
+    rename { exportedArtifactName("android-auto-private") }
     doFirst {
         check(hasLocalReleaseSigning) {
             "The persistent MOTO-HUB release keystore and release-signing.properties are required."
@@ -297,6 +351,41 @@ val exportPrivateAndroidAutoApk by tasks.registering(Copy::class) {
                 androidAutoIdentityDir.resolve("aa_identity_data").isFile
         ) {
             "The private Android Auto identity files are required."
+        }
+    }
+}
+
+val exportRustoreStoreApk by tasks.registering(Copy::class) {
+    // RuStore listing: same versionCode as GitHub, Android Auto identity included, no
+    // REQUEST_INSTALL_PACKAGES. Do not upload a github APK to the store console.
+    dependsOn("assembleRustoreRelease")
+    dependsOn("verifyRustoreReleaseInstallPermission")
+    from(channelReleaseApkFile("rustore"))
+    into(rootProject.projectDir.resolve("../../artifacts"))
+    rename { exportedArtifactName("rustore") }
+    doFirst {
+        check(hasLocalReleaseSigning) {
+            "The persistent MOTO-HUB release keystore and release-signing.properties are required."
+        }
+        check(!noReleaseObfuscation) {
+            "Published artifacts must be obfuscated: drop -PnoReleaseObfuscation to export."
+        }
+        check(includeAndroidAutoIdentity.get()) {
+            "RuStore store APK export requires -PincludeAndroidAutoIdentity=true."
+        }
+        check(
+            androidAutoIdentityDir.resolve("aa_cert").isFile &&
+                androidAutoIdentityDir.resolve("aa_identity_data").isFile
+        ) {
+            "The private Android Auto identity files are required."
+        }
+    }
+    doLast {
+        val exported = destinationDir.resolve(exportedArtifactName("rustore"))
+        val identityEntries = zipTree(exported).matching { include("res/raw/aa_cert", "res/raw/aa_identity_data") }
+        check(!identityEntries.isEmpty) {
+            "${exported.name} is missing the Android Auto identity; rerun with " +
+                "-PincludeAndroidAutoIdentity=true."
         }
     }
 }
