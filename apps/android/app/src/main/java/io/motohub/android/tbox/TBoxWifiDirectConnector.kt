@@ -338,8 +338,12 @@ class TBoxWifiDirectConnector(
             manager.requestGroupInfo(channel) { resume(it) }
         }
         if (!groupBelongsToProfile(group?.networkName, group?.owner?.deviceName, profile.ssid)) return false
+        // Never the profile's SSID as a stand-in for a name the framework did not give: the
+        // 2026-09-14 log reads "group VOGE-5G-b780 is already formed" five times for a group
+        // that had no name at all, which is exactly the group that then has no address either.
+        // Naming it honestly is what makes those runs tellable apart from the working ones.
         log(
-            "Wi-Fi Direct group ${group?.networkName ?: profile.ssid} is already formed and this " +
+            "Wi-Fi Direct group ${group?.networkName ?: "(unnamed)"} is already formed and this " +
                 "phone is a client in it; adopting it instead of joining again."
         )
         // Resolve it here rather than leaning on the opportunistic check [registerReceiver] fires:
@@ -822,6 +826,7 @@ class TBoxWifiDirectConnector(
                 resolveLocalAddress(
                     iface = group?.`interface`,
                     gateway = gateway,
+                    pollMillis = localAddressPollMillis(groupName, ownerName),
                     leaveGroup = { removeGroup(manager, channel, closeChannelAfter = true) },
                     settle = settle
                 )
@@ -832,12 +837,13 @@ class TBoxWifiDirectConnector(
     private fun resolveLocalAddress(
         iface: String?,
         gateway: Inet4Address,
+        pollMillis: Long,
         leaveGroup: () -> Unit,
         settle: (Result<TBoxLink.WifiDirect>) -> Unit
     ) {
         // DHCP on the p2p link can lag the "group formed" event; poll off the main thread.
         Thread({
-            val bindIp = pollLocalP2pIpv4(iface)
+            val bindIp = pollLocalP2pIpv4(iface, pollMillis)
             if (bindIp == null) {
                 // What the process could actually see, not just that it saw nothing: this poll
                 // comes up empty for two very different reasons - DHCP still pending on a group
@@ -848,7 +854,8 @@ class TBoxWifiDirectConnector(
                 settle(
                     Result.failure(
                         IllegalStateException(
-                            "Wi-Fi Direct group formed but no usable 192.168.49.x address appeared on $iface."
+                            "Wi-Fi Direct group formed but no usable 192.168.49.x address " +
+                                "appeared on $iface within ${pollMillis / 1_000L}s."
                         )
                     )
                 )
@@ -868,8 +875,8 @@ class TBoxWifiDirectConnector(
         }, "tbox-p2p-ip").apply { isDaemon = true }.start()
     }
 
-    private fun pollLocalP2pIpv4(iface: String?): Inet4Address? {
-        val deadline = System.nanoTime() + IP_POLL_TIMEOUT_MS * 1_000_000
+    private fun pollLocalP2pIpv4(iface: String?, budgetMillis: Long): Inet4Address? {
+        val deadline = System.nanoTime() + budgetMillis * 1_000_000
         while (System.nanoTime() < deadline) {
             localP2pIpv4(iface)?.let { return it }
             try {
@@ -1105,6 +1112,24 @@ class TBoxWifiDirectConnector(
          * preparation calls, two instant rejections and the retry delay between them. */
         private const val WEDGE_ROUND_COST_MS = 3_000L
         private const val IP_POLL_TIMEOUT_MS = 10_000L
+
+        /**
+         * The same wait for a group the framework will not name. Two polls, not twenty.
+         *
+         * [groupBelongsToProfile] accepts a group whose name and owner both read back empty,
+         * because refusing on no evidence once tore down riders' working links. The cost of
+         * that generosity is that a half-torn-down group is adopted too, and such a group has
+         * no address to find: the full [IP_POLL_TIMEOUT_MS] is then spent proving a negative
+         * that was already decided. Field log 2026-09-14, Xiaomi 23117RA68G: five recovery
+         * attempts across two dash reboots each burned the whole 10s that way, and the run
+         * that finally worked had a readable name (`DIRECT-zu`) and an address within
+         * milliseconds. Every success in that log did.
+         *
+         * Short enough that a refused adoption costs about what the framework's own instant
+         * refusals cost, so the recovery loop gets its next attempt while the rider waits;
+         * long enough to still catch a group that is genuinely one poll away from ready.
+         */
+        private const val OPAQUE_GROUP_IP_POLL_TIMEOUT_MS = 1_500L
         private const val IP_POLL_INTERVAL_MS = 500L
         private const val ADOPT_VERIFY_TIMEOUT_MS = 3_000L
         private const val ADOPT_VERIFY_POLL_MS = 300L
@@ -1113,6 +1138,20 @@ class TBoxWifiDirectConnector(
         private const val VOGE_P2P_PEER_PREFIX = "VOGE-5G-"
         /** SSDQ01-0120 / Carbit channel 37501: P2P device name, SoftAP only while pairing. */
         private const val VOGE_SSDQ_MODEL_ID = "37501"
+
+        /**
+         * How long to wait for this phone's own p2p address on a group that is already formed.
+         *
+         * A group the framework describes - it has a name, or an owner, or both - is one this
+         * phone can be expected to hold an address on, so it gets the full DHCP wait. A group
+         * it describes with nothing at all gets [OPAQUE_GROUP_IP_POLL_TIMEOUT_MS].
+         */
+        internal fun localAddressPollMillis(groupName: String?, ownerDeviceName: String?): Long =
+            if (groupName.isNullOrBlank() && ownerDeviceName.isNullOrBlank()) {
+                OPAQUE_GROUP_IP_POLL_TIMEOUT_MS
+            } else {
+                IP_POLL_TIMEOUT_MS
+            }
 
         /**
          * Whether a join round that was refused outright should be retried after a settle,

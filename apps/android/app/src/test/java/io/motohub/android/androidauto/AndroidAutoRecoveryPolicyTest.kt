@@ -177,4 +177,38 @@ class AndroidAutoRecoveryPolicyTest {
             recoveryGiveUpMillis(dashProjectionLeave = true, wifiDirect = true)
         )
     }
+
+    @Test
+    fun `a rider who may press Up any second is polled on a tight grid`() {
+        assertEquals(DASH_RETURN_FAST_RETRY_MS, recoveryRetryMillis(dashReturn = true, elapsedMillis = 0L))
+        assertEquals(
+            DASH_RETURN_FAST_RETRY_MS,
+            recoveryRetryMillis(dashReturn = true, elapsedMillis = DASH_RETURN_FAST_RETRY_WINDOW_MS - 1)
+        )
+        assertTrue(DASH_RETURN_FAST_RETRY_MS < STANDARD_RECOVERY_RETRY_MS)
+    }
+
+    @Test
+    fun `the grid opens back up once attempts stop being cheap`() {
+        assertEquals(
+            STANDARD_RECOVERY_RETRY_MS,
+            recoveryRetryMillis(dashReturn = true, elapsedMillis = DASH_RETURN_FAST_RETRY_WINDOW_MS)
+        )
+        assertEquals(
+            STANDARD_RECOVERY_RETRY_MS,
+            recoveryRetryMillis(dashReturn = true, elapsedMillis = 120_000L)
+        )
+    }
+
+    @Test
+    fun `a recovery that is not a dash return keeps the standard pause`() {
+        assertEquals(
+            STANDARD_RECOVERY_RETRY_MS,
+            recoveryRetryMillis(dashReturn = false, elapsedMillis = 0L)
+        )
+        assertEquals(
+            STANDARD_RECOVERY_RETRY_MS,
+            recoveryRetryMillis(dashReturn = false, elapsedMillis = 60_000L)
+        )
+    }
 }

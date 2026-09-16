@@ -97,4 +97,52 @@ class TBoxCapabilitiesTest {
         // "Not reported" is not a verdict either way.
         assertFalse(looksLikeDashUptime(null))
     }
+
+    @Test
+    fun `a synced dash outside UTC is not reported as an offset out`() {
+        // Belgrade, 2026-09-14 16:00:27 local. The daemon sent currentTime = UTC + 2h and the
+        // dash echoed it back a second later; the old raw-UTC comparison called that "7199s away".
+        val verdict = describeDashWallClock(
+            reportedMillis = 1_789_401_627_909L,
+            nowMillis = 1_789_394_427_978L,
+            zoneOffsetMillis = 2 * 60 * 60 * 1_000L
+        )
+
+        assertTrue(verdict, verdict.contains("matches the local-shifted clock"))
+        assertTrue(verdict, verdict.contains("0s off"))
+    }
+
+    @Test
+    fun `a dash holding plain UTC is called out as re-applying its own zone`() {
+        val verdict = describeDashWallClock(
+            reportedMillis = 1_789_394_427_978L,
+            nowMillis = 1_789_394_427_978L,
+            zoneOffsetMillis = 2 * 60 * 60 * 1_000L
+        )
+
+        assertTrue(verdict, verdict.contains("is plain UTC"))
+        assertTrue(verdict, verdict.contains("-7200s behind"))
+    }
+
+    @Test
+    fun `in UTC a matching clock is never called a zone problem`() {
+        val verdict = describeDashWallClock(
+            reportedMillis = 1_789_394_427_978L,
+            nowMillis = 1_789_394_427_978L,
+            zoneOffsetMillis = 0L
+        )
+
+        assertTrue(verdict, verdict.contains("matches the local-shifted clock"))
+    }
+
+    @Test
+    fun `a genuinely wrong clock still reports its distance`() {
+        val verdict = describeDashWallClock(
+            reportedMillis = 1_700_000_000_000L,
+            nowMillis = 1_789_394_427_978L,
+            zoneOffsetMillis = 2 * 60 * 60 * 1_000L
+        )
+
+        assertTrue(verdict, verdict.contains("away from the local-shifted value"))
+    }
 }

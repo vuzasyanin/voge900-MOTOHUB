@@ -70,6 +70,49 @@ internal const val HU_TIME_UPTIME_THRESHOLD_MS = 100_000_000_000L
 internal fun looksLikeDashUptime(currentHuTimeMillis: Long?): Boolean =
     currentHuTimeMillis != null && currentHuTimeMillis < HU_TIME_UPTIME_THRESHOLD_MS
 
+/**
+ * How far a dash clock may sit from the value it was given and still count as that value.
+ *
+ * Wide on purpose: the comparison only has to tell two readings apart that differ by a whole
+ * timezone offset, and the smallest of those is 15 minutes.
+ */
+private const val HU_TIME_MATCH_TOLERANCE_MS = 5 * 60 * 1_000L
+
+/**
+ * Describes a dash wall clock against the value the daemon actually pushes it.
+ *
+ * EasyConn's `QUERY_TIME_ACK` carries both `time` (true UTC epoch) and `currentTime`
+ * (`time` plus the zone offset, i.e. local time encoded as an epoch), and the daemon sets the
+ * dash from the latter - see the `setTimeZoneOffsetSeconds` call in `RideDaemonTransport`.
+ * A dash that took the correction therefore reports a `currentHUTime` an offset ahead of real
+ * UTC, and comparing it against a raw `System.currentTimeMillis()` made every correctly
+ * synced dash outside UTC look wrong: the Belgrade log of 2026-09-14 reported "7199s away"
+ * for a clock that was within a second of what it had just been told.
+ *
+ * So the local-shifted value is the baseline. Plain UTC is still checked, because a dash
+ * holding *that* is the one real failure this log can spot - it means the dash re-applies its
+ * own zone on top of ours and the rider sees a clock an offset behind.
+ *
+ * @param zoneOffsetMillis the phone's UTC offset with DST applied, as sent to the daemon.
+ */
+internal fun describeDashWallClock(
+    reportedMillis: Long,
+    nowMillis: Long,
+    zoneOffsetMillis: Long
+): String {
+    val localShiftedSkew = reportedMillis - (nowMillis + zoneOffsetMillis)
+    val utcSkew = reportedMillis - nowMillis
+    return when {
+        kotlin.math.abs(localShiftedSkew) <= HU_TIME_MATCH_TOLERANCE_MS ->
+            "matches the local-shifted clock the daemon pushes, ${localShiftedSkew / 1_000L}s off"
+        zoneOffsetMillis != 0L && kotlin.math.abs(utcSkew) <= HU_TIME_MATCH_TOLERANCE_MS ->
+            "is plain UTC, ${localShiftedSkew / 1_000L}s behind the local-shifted value the " +
+                "daemon pushes, so the dash is applying its own zone on top of ours"
+        else ->
+            "is ${localShiftedSkew / 1_000L}s away from the local-shifted value the daemon pushes"
+    }
+}
+
 internal fun decodeTBoxCapabilities(payload: ByteArray): TBoxCapabilities? = runCatching {
     val jsonText = payload.toString(Charsets.UTF_8).trim().trimEnd('\u0000')
     val json = JSONObject(jsonText)

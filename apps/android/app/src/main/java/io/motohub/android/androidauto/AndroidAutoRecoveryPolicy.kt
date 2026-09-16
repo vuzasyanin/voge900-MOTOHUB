@@ -123,3 +123,34 @@ internal fun recoveryGiveUpMillis(
     wifiDirect -> WIFI_PARK_MILLIS
     else -> STANDARD_RECOVERY_GIVE_UP_MS
 }
+
+/** The pause between recovery attempts once a dash is no longer expected back any second. */
+internal const val STANDARD_RECOVERY_RETRY_MS = 5_000L
+
+/** The pause between recovery attempts while the rider is plausibly still on the stock cluster. */
+internal const val DASH_RETURN_FAST_RETRY_MS = 1_000L
+
+/** How long after a dash leave the rider is treated as about to press Up. */
+internal const val DASH_RETURN_FAST_RETRY_WINDOW_MS = 20_000L
+
+/**
+ * How long to wait after a failed recovery attempt before making the next one.
+ *
+ * On a dash-page return the attempt is a single TCP connect to the endpoint the dash was just
+ * on, so a rider who has not come back yet costs one refused connect - about 10ms on the
+ * 2026-09-14 Xiaomi log. Pausing 5s after that spends the rider's time, not the phone's: in
+ * every successful return in that log the picture was back 1.4-2.4s after the dash answered,
+ * and the whole rest of the 7-13s they waited was this delay running out. A 1s grid for the
+ * first [DASH_RETURN_FAST_RETRY_WINDOW_MS] turns the average of it into half a second.
+ *
+ * The window matters as much as the interval. Past it, either the rider is staying on the
+ * stock cluster or the dash is gone (rebooting, in the same log, twice), and attempts stop
+ * being cheap - a group join can run for tens of seconds - so the grid opens back up rather
+ * than queueing retries behind attempts that are already long.
+ */
+internal fun recoveryRetryMillis(dashReturn: Boolean, elapsedMillis: Long): Long =
+    if (dashReturn && elapsedMillis < DASH_RETURN_FAST_RETRY_WINDOW_MS) {
+        DASH_RETURN_FAST_RETRY_MS
+    } else {
+        STANDARD_RECOVERY_RETRY_MS
+    }

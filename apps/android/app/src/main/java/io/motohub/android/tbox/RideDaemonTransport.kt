@@ -1549,12 +1549,17 @@ class RideDaemonTransport(
             )
             return
         }
+        val now = System.currentTimeMillis()
         val verdict = if (looksLikeDashUptime(reported)) {
             "looks like uptime, not a wall clock (below ${HU_TIME_UPTIME_THRESHOLD_MS}ms), so its " +
                 "clock was never set or was reset"
         } else {
-            val skewMillis = reported - System.currentTimeMillis()
-            "looks like a wall clock, ${skewMillis / 1_000L}s away from this phone's"
+            "looks like a wall clock and " +
+                describeDashWallClock(
+                    reportedMillis = reported,
+                    nowMillis = now,
+                    zoneOffsetMillis = java.util.TimeZone.getDefault().getOffset(now).toLong()
+                )
         }
         ProjectionEventLog.record(
             "CLOCK",

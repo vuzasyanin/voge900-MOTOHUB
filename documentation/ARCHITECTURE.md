@@ -265,11 +265,16 @@ projection modes (mirroring, Android Auto, Ride Dashboard):
   refused/reset, transport-level I/O errors). Runs once, before the
   RideDaemon session exists.
 - **Mid-session stream recovery** (`RECOVERY_RETRY_MILLIS` /
-  `RECOVERY_GIVE_UP_MILLIS`, defined identically in
-  `ProjectionSessionService`, `AndroidAutoSessionService` and
-  `RideDashboardSessionService`): retries every `5s`, gives up after `120s`
+  `RECOVERY_GIVE_UP_MILLIS` in `ProjectionSessionService`; `recoveryRetryMillis`
+  / `recoveryGiveUpMillis` in `AndroidAutoRecoveryPolicy` for
+  `AndroidAutoSessionService`): retries every `5s`, gives up after `120s`
   total with no successful reconnect - this is the concrete budget behind
   the `Reconnecting -> Stopping: retry budget exhausted` transition above.
+  Android Auto widens both ends of that from the policy file: a dash-page
+  leave or a Wi-Fi Direct link gets `180s` instead of `120s`, and for the
+  first `20s` after a dash leave the retry grid tightens to `1s`, because
+  each attempt there is one refused TCP connect to the endpoint the dash
+  was just on.
   Unified 2026-07-20; before that, mirroring had no recovery at all and
   Android Auto was single-attempt-only.
 

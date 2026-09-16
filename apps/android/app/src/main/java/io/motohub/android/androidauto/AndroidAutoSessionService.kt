@@ -1012,7 +1012,8 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
             }
         )
         recoveryJob = serviceScope.launch {
-            val deadline = SystemClock.elapsedRealtime() + giveUpMillis
+            val startedAt = SystemClock.elapsedRealtime()
+            val deadline = startedAt + giveUpMillis
             var attempt = 0
             while (!stopping && SystemClock.elapsedRealtime() < deadline) {
                 attempt++
@@ -1034,7 +1035,12 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
                         "WATCHDOG",
                         "Android Auto recovery attempt $attempt failed: ${failure.message}"
                     )
-                    delay(RECOVERY_RETRY_MILLIS)
+                    delay(
+                        recoveryRetryMillis(
+                            dashReturn = dashReturn,
+                            elapsedMillis = SystemClock.elapsedRealtime() - startedAt
+                        )
+                    )
                 }
             }
             recoveryRequested.set(false)
@@ -1344,7 +1350,6 @@ class AndroidAutoSessionService : Service(), AndroidAutoPreviewController {
         private const val WIFI_PARK_POLL_MS = 2_000L
         private const val SETTLE_POLL_MS = 500L
         private const val NETWORK_REJOIN_WAIT_MILLIS = 75_000L
-        private const val RECOVERY_RETRY_MILLIS = 5_000L
         private const val WAKE_LOCK_TIMEOUT_MS = 4 * 60 * 60 * 1_000L
 
         fun start(context: Context) {

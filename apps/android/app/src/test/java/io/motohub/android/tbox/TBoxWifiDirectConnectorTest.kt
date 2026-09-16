@@ -191,6 +191,30 @@ class TBoxWifiDirectConnectorTest {
         )
     }
 
+    /**
+     * The companion of `accepts an unverifiable group name rather than breaking working joins`:
+     * such a group is still adopted, but it is no longer allowed to spend the full DHCP wait
+     * proving it has no address. Field log 2026-09-14 burned 10s on it five times.
+     */
+    @Test
+    fun `a group the framework cannot describe gets a short address wait`() {
+        val described = TBoxWifiDirectConnector.localAddressPollMillis("DIRECT-zu", null)
+        val opaque = TBoxWifiDirectConnector.localAddressPollMillis(null, null)
+
+        assertTrue(opaque < described)
+        assertEquals(opaque, TBoxWifiDirectConnector.localAddressPollMillis("", "  "))
+    }
+
+    @Test
+    fun `any readable group detail earns the full address wait`() {
+        val full = TBoxWifiDirectConnector.localAddressPollMillis("DIRECT-zu", "VOGE-5G-b780")
+
+        assertEquals(full, TBoxWifiDirectConnector.localAddressPollMillis("DIRECT-zu", null))
+        // An owner alone is enough: a group named after the dash's P2P device never matches by
+        // name, and those joins must keep the wait they have always had.
+        assertEquals(full, TBoxWifiDirectConnector.localAddressPollMillis(null, "VOGE-5G-b780"))
+    }
+
     @Test
     fun `a budget too small for one settled round refuses the very first retry`() {
         assertFalse(
