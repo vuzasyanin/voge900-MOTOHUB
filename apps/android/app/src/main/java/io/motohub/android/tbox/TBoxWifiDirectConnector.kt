@@ -338,12 +338,22 @@ class TBoxWifiDirectConnector(
             manager.requestGroupInfo(channel) { resume(it) }
         }
         if (!groupBelongsToProfile(group?.networkName, group?.owner?.deviceName, profile.ssid)) return false
+        val groupName = group?.networkName
+        val ownerName = group?.owner?.deviceName
         // Never the profile's SSID as a stand-in for a name the framework did not give: the
         // 2026-09-14 log reads "group VOGE-5G-b780 is already formed" five times for a group
         // that had no name at all, which is exactly the group that then has no address either.
         // Naming it honestly is what makes those runs tellable apart from the working ones.
+        val label = groupName ?: "(unnamed)"
+        if (!shouldAdoptFormedGroup(groupName, ownerName, hasLocalP2pAddress = localP2pIpv4(null) != null)) {
+            log(
+                "Wi-Fi Direct group $label is already formed but has no usable 192.168.49.x " +
+                    "address; leaving it up and joining instead of adopting."
+            )
+            return false
+        }
         log(
-            "Wi-Fi Direct group ${group?.networkName ?: "(unnamed)"} is already formed and this " +
+            "Wi-Fi Direct group $label is already formed and this " +
                 "phone is a client in it; adopting it instead of joining again."
         )
         // Resolve it here rather than leaning on the opportunistic check [registerReceiver] fires:
@@ -823,11 +833,41 @@ class TBoxWifiDirectConnector(
                     removeGroup(manager, channel, closeChannelAfter = false)
                     return@requestGroupInfo
                 }
+                val leaveGroup = { removeGroup(manager, channel, closeChannelAfter = true) }
+                if (isOpaqueFormedGroup(groupName, ownerName)) {
+                    // One look, not a poll: Xiaomi reports groupFormed with no name and no
+                    // 192.168.49.x until an Activity is in front, and settling that as a
+                    // failure (field log 2026-09-16) locked the recovery loop out of join()
+                    // for tens of seconds. An address that is already here is still adopted.
+                    val bindIp = localP2pIpv4(null)
+                    if (bindIp == null) {
+                        log(
+                            "Wi-Fi Direct group (unnamed) is already formed but has no usable " +
+                                "192.168.49.x address; leaving it up and joining instead of adopting."
+                        )
+                        return@requestGroupInfo
+                    }
+                    log(
+                        "Wi-Fi Direct connected: phone=${bindIp.hostAddress}, " +
+                            "dash(GO)=${gateway.hostAddress}."
+                    )
+                    settle(
+                        Result.success(
+                            TBoxLink.WifiDirect(
+                                bindIp = bindIp,
+                                gatewayIp = gateway,
+                                leaveGroup = leaveGroup,
+                                appContext = appContext
+                            )
+                        )
+                    )
+                    return@requestGroupInfo
+                }
                 resolveLocalAddress(
                     iface = group?.`interface`,
                     gateway = gateway,
                     pollMillis = localAddressPollMillis(groupName, ownerName),
-                    leaveGroup = { removeGroup(manager, channel, closeChannelAfter = true) },
+                    leaveGroup = leaveGroup,
                     settle = settle
                 )
             }
@@ -1143,15 +1183,36 @@ class TBoxWifiDirectConnector(
          * How long to wait for this phone's own p2p address on a group that is already formed.
          *
          * A group the framework describes - it has a name, or an owner, or both - is one this
-         * phone can be expected to hold an address on, so it gets the full DHCP wait. A group
-         * it describes with nothing at all gets [OPAQUE_GROUP_IP_POLL_TIMEOUT_MS].
+         * phone can be expected to hold an address on, so it gets the full DHCP wait. An opaque
+         * group is not polled through this helper: [checkForFormedGroup] peeks once and
+         * [shouldAdoptFormedGroup] falls through to join when there is no address.
          */
         internal fun localAddressPollMillis(groupName: String?, ownerDeviceName: String?): Long =
-            if (groupName.isNullOrBlank() && ownerDeviceName.isNullOrBlank()) {
+            if (isOpaqueFormedGroup(groupName, ownerDeviceName)) {
                 OPAQUE_GROUP_IP_POLL_TIMEOUT_MS
             } else {
                 IP_POLL_TIMEOUT_MS
             }
+
+        /** The framework answered groupFormed but named neither the group nor its owner. */
+        internal fun isOpaqueFormedGroup(groupName: String?, ownerDeviceName: String?): Boolean =
+            groupName.isNullOrBlank() && ownerDeviceName.isNullOrBlank()
+
+        /**
+         * Whether a formed group should be adopted rather than joined.
+         *
+         * A named group always is: DHCP can lag the "formed" event, so [checkForFormedGroup]
+         * still waits for [IP_POLL_TIMEOUT_MS]. An opaque group is adopted only when this
+         * phone already has a 192.168.49.x address on it. Without one, settling a failure
+         * (field log 2026-09-16, Xiaomi 23117RA68G) locked recovery out of [join] for the
+         * whole short-poll window, repeated every second, until an Activity came to the
+         * foreground and the framework finally named `DIRECT-xA`.
+         */
+        internal fun shouldAdoptFormedGroup(
+            groupName: String?,
+            ownerDeviceName: String?,
+            hasLocalP2pAddress: Boolean
+        ): Boolean = !isOpaqueFormedGroup(groupName, ownerDeviceName) || hasLocalP2pAddress
 
         /**
          * Whether a join round that was refused outright should be retried after a settle,

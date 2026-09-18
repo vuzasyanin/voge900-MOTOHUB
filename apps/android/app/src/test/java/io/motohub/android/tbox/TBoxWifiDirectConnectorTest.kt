@@ -193,8 +193,8 @@ class TBoxWifiDirectConnectorTest {
 
     /**
      * The companion of `accepts an unverifiable group name rather than breaking working joins`:
-     * such a group is still adopted, but it is no longer allowed to spend the full DHCP wait
-     * proving it has no address. Field log 2026-09-14 burned 10s on it five times.
+     * such a group is still accepted as "ours", but it is no longer adopted without an address.
+     * Field log 2026-09-16 burned a 1s poll on it eleven times until an Activity came to front.
      */
     @Test
     fun `a group the framework cannot describe gets a short address wait`() {
@@ -203,6 +203,35 @@ class TBoxWifiDirectConnectorTest {
 
         assertTrue(opaque < described)
         assertEquals(opaque, TBoxWifiDirectConnector.localAddressPollMillis("", "  "))
+    }
+
+    @Test
+    fun `an opaque group without an address is not adopted`() {
+        assertTrue(TBoxWifiDirectConnector.isOpaqueFormedGroup(null, null))
+        assertTrue(TBoxWifiDirectConnector.isOpaqueFormedGroup("", "  "))
+        assertFalse(TBoxWifiDirectConnector.isOpaqueFormedGroup("DIRECT-xA", null))
+        assertFalse(
+            TBoxWifiDirectConnector.shouldAdoptFormedGroup(
+                groupName = null,
+                ownerDeviceName = null,
+                hasLocalP2pAddress = false
+            )
+        )
+        assertTrue(
+            TBoxWifiDirectConnector.shouldAdoptFormedGroup(
+                groupName = null,
+                ownerDeviceName = null,
+                hasLocalP2pAddress = true
+            )
+        )
+        // A named group is still adopted even before DHCP answers: checkForFormedGroup waits.
+        assertTrue(
+            TBoxWifiDirectConnector.shouldAdoptFormedGroup(
+                groupName = "DIRECT-xA",
+                ownerDeviceName = null,
+                hasLocalP2pAddress = false
+            )
+        )
     }
 
     @Test

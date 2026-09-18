@@ -1,9 +1,13 @@
 package io.motohub.android.tbox
 
 import io.motohub.android.encoding.EncoderProfile
+import kotlin.system.measureTimeMillis
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -27,17 +31,59 @@ class TBoxVideoNegotiationTest {
     }
 
     @Test
-    fun `uses saved geometry only when the live area times out`() = runBlocking {
+    fun `uses saved geometry after a short post-handshake wait`() = runBlocking {
         val transport = FakeTransport(null)
+        val elapsedMillis = measureTimeMillis {
+            val result = transport.negotiateVideoConfiguration(
+                HOST,
+                savedArea = TBoxEvent.VideoArea(1024, 601),
+                timeoutMillis = 10_000L
+            )
+
+            assertEquals(TBoxVideoAreaSource.SAVED, result.getOrThrow().source)
+            assertEquals(EncoderProfile(1024, 592), result.getOrThrow().encoderProfile)
+        }
+        assertTrue(
+            "saved path waited ${elapsedMillis}ms instead of the short post-handshake window",
+            elapsedMillis < POST_HANDSHAKE_SAVED_AREA_WAIT_MS + 750L
+        )
+    }
+
+    @Test
+    fun `live area that arrives in the short window still beats saved geometry`() = runBlocking {
+        val transport = FakeTransport(
+            areaOnStart = null,
+            delayedArea = TBoxEvent.VideoArea(800, 480),
+            areaAfterStartMillis = 20,
+            emitScope = this
+        )
 
         val result = transport.negotiateVideoConfiguration(
             HOST,
             savedArea = TBoxEvent.VideoArea(1024, 601),
-            timeoutMillis = 10
+            timeoutMillis = 200
         )
 
-        assertEquals(TBoxVideoAreaSource.SAVED, result.getOrThrow().source)
-        assertEquals(EncoderProfile(1024, 592), result.getOrThrow().encoderProfile)
+        assertEquals(TBoxVideoAreaSource.LIVE, result.getOrThrow().source)
+        assertEquals(TBoxEvent.VideoArea(800, 480), result.getOrThrow().rawArea)
+    }
+
+    @Test
+    fun `first connect without saved geometry waits the full timeout`() = runBlocking {
+        val transport = FakeTransport(null)
+        val timeoutMillis = 80L
+        val elapsedMillis = measureTimeMillis {
+            val result = transport.negotiateVideoConfiguration(
+                HOST,
+                savedArea = null,
+                timeoutMillis = timeoutMillis,
+                fallbackArea = TBoxEvent.VideoArea(800, 480)
+            )
+
+            assertEquals(TBoxVideoAreaSource.FALLBACK, result.getOrThrow().source)
+        }
+        assertTrue("first-connect path returned too early (${elapsedMillis}ms)", elapsedMillis >= timeoutMillis - 20)
+        assertTrue("first-connect path waited ${elapsedMillis}ms", elapsedMillis < 500)
     }
 
     @Test
@@ -67,9 +113,12 @@ class TBoxVideoNegotiationTest {
     }
 
     private class FakeTransport(
-        private val areaOnStart: TBoxEvent.VideoArea?
+        private val areaOnStart: TBoxEvent.VideoArea?,
+        private val delayedArea: TBoxEvent.VideoArea? = null,
+        private val areaAfterStartMillis: Long = 0,
+        private val emitScope: CoroutineScope? = null
     ) : TBoxTransport {
-        private val mutableEvents = MutableSharedFlow<TBoxEvent>()
+        private val mutableEvents = MutableSharedFlow<TBoxEvent>(extraBufferCapacity = 1)
         override val events: Flow<TBoxEvent> = mutableEvents.asSharedFlow()
 
         override suspend fun discover(link: TBoxLink, expectedModelId: String?): Result<TBoxHost> =
@@ -77,6 +126,14 @@ class TBoxVideoNegotiationTest {
 
         override suspend fun start(host: TBoxHost): Result<Unit> {
             areaOnStart?.let { mutableEvents.emit(it) }
+            val delayed = delayedArea
+            val scope = emitScope
+            if (delayed != null && scope != null) {
+                scope.launch {
+                    delay(areaAfterStartMillis)
+                    mutableEvents.tryEmit(delayed)
+                }
+            }
             return Result.success(Unit)
         }
 
