@@ -1,5 +1,8 @@
 # VOGE 900DSX MOTOHUB
 
+<img width="1298" height="1724" alt="image" src="https://github.com/user-attachments/assets/0713009b-ef98-4f64-bb76-6bbfa675108d" />
+
+
 Clone of [MOTO-HUB](https://github.com/vincenzobpt/MOTO-HUB), remade specifically for **VOGE 900DSX** motorcycles.
 
 Android 14+ app that connects the phone to the motorcycle T-Box and projects **Android Auto** or **screen mirroring** (whole screen or a single app) onto the 900DSX TFT. Local-first: no account, no vendor affiliation with VOGE or Loncin.
