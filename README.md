@@ -1,6 +1,6 @@
 # VOGE 900DSX MOTOHUB
 
-<img width="1300" height="1182" alt="image" src="https://github.com/user-attachments/assets/adc287a3-a3f9-466c-b363-eedbb452672a" />
+<img width="800" height="727" alt="image" src="https://github.com/user-attachments/assets/adc287a3-a3f9-466c-b363-eedbb452672a" />
 
 
 Clone of [MOTO-HUB](https://github.com/vincenzobpt/MOTO-HUB), remade specifically for **VOGE 900DSX** motorcycles.
